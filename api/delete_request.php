@@ -62,6 +62,16 @@ try {
         if (!empty($deliv['file_path'])) $filesToDelete[] = ['Key' => $deliv['file_path']];
     }
 
+    // Review-package files are separate from final deliverables.
+    $stmt_review_files = $pdo->prepare("SELECT rf.file_path
+        FROM request_review_files rf
+        JOIN request_review_packages rp ON rp.id = rf.package_id
+        WHERE rp.request_id = :id");
+    $stmt_review_files->execute([':id' => $request_id]);
+    while ($reviewFile = $stmt_review_files->fetch()) {
+        if (!empty($reviewFile['file_path'])) $filesToDelete[] = ['Key' => $reviewFile['file_path']];
+    }
+
     // جلب ملفات إيصالات الدفع
     $stmt_pay = $pdo->prepare("SELECT receipt_file_path FROM payments WHERE request_id = :id");
     $stmt_pay->execute([':id' => $request_id]);

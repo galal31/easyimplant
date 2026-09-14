@@ -8,6 +8,7 @@ try {
     $stats = $pdo->query("
         SELECT 
             (SELECT COUNT(*) FROM requests WHERE status = 'pending_review') as pending_requests,
+            (SELECT COUNT(*) FROM requests WHERE service_type = 'surgical_guide' AND status = 'awaiting_clinic_approval') as awaiting_clinic_approval,
             (SELECT COUNT(*) FROM users WHERE role = 'clinic' AND status = 'approved') as active_clinics,
             (SELECT COUNT(*) FROM requests WHERE status = 'completed') as completed_requests
     ")->fetch();
@@ -29,7 +30,7 @@ try {
     }
 } catch (\PDOException $e) {
     error_log("Admin Dashboard DB Error: " . $e->getMessage());
-    $stats = ['pending_requests' => 0, 'active_clinics' => 0, 'completed_requests' => 0];
+    $stats = ['pending_requests' => 0, 'awaiting_clinic_approval' => 0, 'active_clinics' => 0, 'completed_requests' => 0];
     $account_stats = ['total_implants' => 0, 'free_implants' => 0, 'guided_kit_rental_total' => 0, 'approved_paid' => 0, 'balance_due' => 0];
 }
 ?>
@@ -37,7 +38,7 @@ try {
 <h2 class="text-2xl font-bold text-[#13324a] mb-6">Dashboard Overview</h2>
 
 <!-- Stats Row -->
-<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 mb-8">
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
         <div>
             <div class="flex items-center gap-2">
@@ -49,6 +50,16 @@ try {
         <div class="h-14 w-14 rounded-full bg-amber-50 flex items-center justify-center text-amber-500 text-xl">
             <i class="fa-solid fa-bell"></i>
         </div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
+        <div>
+            <div class="flex items-center gap-2">
+                <p class="text-sm font-bold text-slate-500 uppercase tracking-wider">Clinic Approval</p>
+                <button type="button" data-dashboard-card-help="clinic_approval" data-dashboard-card-value="<?= (int) $stats['awaiting_clinic_approval'] ?>" aria-label="شرح طلبات موافقة العيادة" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
+            </div>
+            <p class="text-3xl font-extrabold text-cyan-700 mt-1"><?= (int) $stats['awaiting_clinic_approval'] ?></p>
+        </div>
+        <div class="h-14 w-14 rounded-full bg-cyan-50 flex items-center justify-center text-cyan-600 text-xl"><i class="fa-solid fa-file-circle-check"></i></div>
     </div>
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex items-center justify-between">
         <div>
@@ -156,6 +167,10 @@ const dashboardCardHelp = {
     pending_requests: {
         title: 'الطلبات المعلقة',
         body: 'هذا الرقم هو عدد الطلبات الجديدة التي أرسلتها العيادات وما زالت تنتظر مراجعة الإدارة. يشمل طلبات الأدلة الجراحية وطلبات الجرّاحين.'
+    },
+    clinic_approval: {
+        title: 'في انتظار موافقة العيادة',
+        body: 'هذا الرقم هو عدد طلبات الأدلة الجراحية التي أرسلت لها الإدارة جولة مراجعة، وما زالت تنتظر موافقة العيادة على أحدث جولة. الموافقة لا تعني أن الطلب مدفوع.'
     },
     active_clinics: {
         title: 'العيادات النشطة',

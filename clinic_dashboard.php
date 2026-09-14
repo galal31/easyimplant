@@ -39,6 +39,7 @@ try {
 function getStatusBadge($status) {
     $badges = [
         'pending_review' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
+        'awaiting_clinic_approval' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Your Approval</span>',
         'rejected'       => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-red-50 text-red-600 border border-red-200">Rejected</span>',
         'pending_payment'=> '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-orange-50 text-orange-600 border border-orange-200">Pending Payment</span>',
         'in_progress'    => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">In Progress</span>',
@@ -166,7 +167,7 @@ function getServiceType($type) {
                                         View Details
                                     </a>
                                     
-                                    <?php if ($req['status'] === 'pending_payment'): ?>
+                                    <?php if ($req['status'] === 'pending_payment' && $req['service_type'] !== 'surgical_guide'): ?>
                                     <a href="upload_receipt.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-200 ml-2">
                                         <i class="fa-solid fa-upload mr-1.5"></i> Upload Receipt
                                     </a>

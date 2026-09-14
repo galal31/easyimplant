@@ -14,11 +14,19 @@ function surgicalGuideTransitionIsAllowed(string $currentStatus, string $newStat
 {
     $transitions = [
         'admin' => [
-            'pending_review' => ['pending_payment', 'rejected'],
+            'pending_review' => ['rejected'],
+            'awaiting_clinic_approval' => ['rejected'],
             'pending_payment' => ['rejected'],
             'in_progress' => ['rejected'],
         ],
-        'payment_approval' => [
+        'review_package' => [
+            'pending_review' => ['awaiting_clinic_approval'],
+            'awaiting_clinic_approval' => ['awaiting_clinic_approval'],
+        ],
+        'clinic_approval' => [
+            'awaiting_clinic_approval' => ['pending_payment'],
+        ],
+        'gateway_payment_confirmation' => [
             'pending_payment' => ['in_progress'],
         ],
         'deliverables' => [
@@ -28,4 +36,3 @@ function surgicalGuideTransitionIsAllowed(string $currentStatus, string $newStat
 
     return in_array($newStatus, $transitions[$source][$currentStatus] ?? [], true);
 }
-

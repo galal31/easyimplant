@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // التأكد إن الطلب يخص المستخدم ده ومستني دفع
     $stmtCheck = $pdo->prepare("
-        SELECT r.id, sgd.total_price
+        SELECT r.id, r.service_type, sgd.total_price
         FROM requests r
         LEFT JOIN surgical_guide_details sgd ON sgd.request_id = r.id
         WHERE r.id = :id AND r.user_id = :user_id AND r.status = 'pending_payment'
@@ -34,7 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmtCheck->execute([':id' => $request_id, ':user_id' => $user_id]);
     $request = $stmtCheck->fetch();
     if (!$request) {
+        http_response_code(409);
         echo json_encode(['error' => 'Unauthorized or request is not pending payment.']);
+        exit;
+    }
+
+    if ($request['service_type'] === 'surgical_guide') {
+        http_response_code(409);
+        echo json_encode(['error' => 'Manual payment receipts are disabled for Surgical Guide requests. Online payment is not available yet.']);
         exit;
     }
 

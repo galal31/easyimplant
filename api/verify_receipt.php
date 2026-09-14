@@ -54,26 +54,10 @@ try {
             exit;
         }
 
-        if ($payment['status'] !== 'pending_verification') {
-            $pdo->rollBack();
-            http_response_code(409);
-            echo json_encode(['error' => 'This payment receipt has already been reviewed.']);
-            exit;
-        }
-
-        if ($payment['request_status'] !== 'pending_payment') {
-            $pdo->rollBack();
-            http_response_code(409);
-            echo json_encode(['error' => 'Payment can only be reviewed while the request is pending payment.']);
-            exit;
-        }
-
-        if ($action === 'approved' && !surgicalGuideTransitionIsAllowed('pending_payment', 'in_progress', 'payment_approval')) {
-            $pdo->rollBack();
-            http_response_code(409);
-            echo json_encode(['error' => 'The request cannot move to production from its current step.']);
-            exit;
-        }
+        $pdo->rollBack();
+        http_response_code(409);
+        echo json_encode(['error' => 'Manual payment receipt review is disabled for Surgical Guide requests. Historical receipts are read-only.']);
+        exit;
     }
 
     $stmt = $pdo->prepare("UPDATE payments SET status = :status WHERE id = :id");

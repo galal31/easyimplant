@@ -6,6 +6,7 @@ require_once '../includes/surgical_guide_kits.php';
 require_once '../includes/surgeon_services.php';
 require_once '../includes/r2_config.php';
 require_once '../includes/request_file_metadata.php';
+require_once '../includes/request_review.php';
 
 use Aws\Exception\AwsException;
 
@@ -44,6 +45,8 @@ function getPresignedUrl($s3Client, $bucketName, $key) {
 try {
     $guideKitFiles = [];
     $deliverables = [];
+    $reviewPackages = [];
+    $requestMessages = [];
     // Get Request Basic Info
     $stmt = $pdo->prepare("SELECT r.*, u.full_name as doctor_name, u.clinic_name, u.phone, u.email, u.country FROM requests r JOIN users u ON r.user_id = u.id WHERE r.id = :id");
     $stmt->execute([':id' => $request_id]);
@@ -67,6 +70,8 @@ try {
         foreach ($stmt_deliverables->fetchAll() as $file) {
             $deliverables[$file['file_type']][] = $file;
         }
+        $reviewPackages = fetchRequestReviewPackages($pdo, (int) $request_id);
+        $requestMessages = fetchRequestMessages($pdo, (int) $request_id);
     } else {
         $stmt_details = $pdo->prepare("SELECT * FROM surgeon_requests WHERE request_id = :id");
         $stmt_details->execute([':id' => $request_id]);
@@ -117,6 +122,7 @@ try {
 function getStatusBadge($status) {
     $badges = [
         'pending_review' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
+        'awaiting_clinic_approval' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Clinic Approval</span>',
         'rejected'       => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-red-50 text-red-600 border border-red-200">Rejected</span>',
         'pending_payment'=> '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-orange-50 text-orange-600 border border-orange-200">Pending Payment</span>',
         'in_progress'    => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">In Progress</span>',
@@ -186,13 +192,13 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
                 <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
                     <?php if ($request['service_type'] === 'surgical_guide'): ?>
                         <?php
-                            $guide_steps = ['pending_review', 'pending_payment', 'in_progress', 'completed'];
+                            $guide_steps = ['pending_review', 'awaiting_clinic_approval', 'pending_payment', 'in_progress', 'completed'];
                             $current_step = array_search($request['status'], $guide_steps, true);
                             $current_step = $current_step === false ? -1 : $current_step;
                         ?>
                         <h2 class="text-lg font-bold text-[#13324a] mb-4 border-b border-slate-100 pb-3">Request Workflow</h2>
-                        <div class="grid grid-cols-4 gap-1 mb-5 text-center">
-                            <?php foreach (['Review', 'Payment', 'Production', 'Complete'] as $index => $step_label): ?>
+                        <div class="grid grid-cols-5 gap-1 mb-5 text-center">
+                            <?php foreach (['Admin review', 'Clinic approval', 'Payment', 'Production', 'Complete'] as $index => $step_label): ?>
                                 <div>
                                     <div class="h-2 rounded-full <?= $request['status'] !== 'rejected' && $index <= $current_step ? 'bg-[#1d5f8c]' : 'bg-slate-200' ?>"></div>
                                     <span class="mt-1.5 block text-[10px] font-bold <?= $request['status'] !== 'rejected' && $index <= $current_step ? 'text-[#1d5f8c]' : 'text-slate-400' ?>"><?= $step_label ?></span>
@@ -201,13 +207,14 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
                         </div>
 
                         <?php if ($request['status'] === 'pending_review'): ?>
-                            <p class="mb-4 text-sm text-slate-600">Review the case details and files, then request payment to continue.</p>
-                            <button onclick="updateGuideStatus(<?= $request['id'] ?>, 'pending_payment')" class="w-full bg-[#13324a] hover:bg-[#1d5f8c] text-white font-bold py-2.5 rounded-xl transition text-sm">
-                                Approve & Request Payment
-                            </button>
+                            <p class="mb-4 text-sm text-slate-600">Review the case, then send at least one explanatory file below. Payment cannot be requested before the clinic approves the latest review.</p>
+                        <?php elseif ($request['status'] === 'awaiting_clinic_approval'): ?>
+                            <div class="mb-4 rounded-xl border border-cyan-100 bg-cyan-50 p-3 text-sm text-cyan-800">
+                                The clinic is reviewing the latest package. You can send a revised package without deleting the earlier rounds.
+                            </div>
                         <?php elseif ($request['status'] === 'pending_payment'): ?>
                             <div class="mb-4 rounded-xl border border-orange-100 bg-orange-50 p-3 text-sm text-orange-700">
-                                The request will move to production only after an uploaded receipt is approved.
+                                The clinic approved the plan. Online payment is not connected yet; manual receipts are disabled for Surgical Guides.
                             </div>
                         <?php elseif ($request['status'] === 'in_progress'): ?>
                             <div class="mb-4 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-700">
@@ -223,7 +230,7 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
                             </div>
                         <?php endif; ?>
 
-                        <?php if (in_array($request['status'], ['pending_review', 'pending_payment', 'in_progress'], true)): ?>
+                        <?php if (in_array($request['status'], ['pending_review', 'awaiting_clinic_approval', 'pending_payment', 'in_progress'], true)): ?>
                             <div class="mt-5 border-t border-slate-100 pt-4">
                                 <textarea id="guideRejectionReason" rows="3" class="w-full text-sm border border-red-200 rounded-xl px-3 py-2.5 focus:ring-red-400 focus:border-red-400 bg-red-50 mb-3" placeholder="Rejection reason (optional)"></textarea>
                                 <button onclick="updateGuideStatus(<?= $request['id'] ?>, 'rejected')" class="w-full bg-red-50 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 font-bold py-2.5 rounded-xl transition text-sm">
@@ -419,6 +426,75 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
                                 <?php endif; ?>
                             </div>
 
+                            <section class="mt-8 border-t border-slate-200 pt-8" aria-labelledby="reviewPackagesTitle">
+                                <div class="mb-6 flex items-start gap-3">
+                                    <div class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700"><i class="fa-solid fa-file-waveform"></i></div>
+                                    <div>
+                                        <h2 id="reviewPackagesTitle" class="text-lg font-bold text-[#13324a]">Case review & explanation for the clinic</h2>
+                                        <p class="mt-1 text-sm text-slate-500">Each send creates a permanent review round. These files are separate from the final delivery package.</p>
+                                    </div>
+                                </div>
+
+                                <?php if (in_array($request['status'], ['pending_review', 'awaiting_clinic_approval'], true)): ?>
+                                <form id="reviewPackageForm" class="mb-7 rounded-2xl border border-cyan-100 bg-cyan-50/40 p-5">
+                                    <div id="reviewPackageError" class="mb-4 hidden rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700"></div>
+                                    <div id="reviewPackageSuccess" class="mb-4 hidden rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-700"></div>
+                                    <label for="reviewSummary" class="mb-2 block text-sm font-bold text-[#13324a]">Explanation <span class="font-medium text-slate-400">(optional)</span></label>
+                                    <textarea id="reviewSummary" maxlength="5000" rows="4" class="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 focus:border-[#1d5f8c] focus:ring-[#1d5f8c]" placeholder="Explain the plan, important findings, or what changed in this review round."></textarea>
+
+                                    <div class="mt-5">
+                                        <label for="reviewFiles" class="mb-2 block text-sm font-bold text-[#13324a]">Review files <span class="text-red-500">*</span></label>
+                                        <input id="reviewFiles" type="file" multiple required
+                                            accept=".jpg,.jpeg,.png,.webp,.pdf,.mp4,.webm,.mov,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                                            class="block w-full cursor-pointer rounded-xl border border-slate-200 bg-white text-sm text-slate-500 file:mr-4 file:border-0 file:bg-[#13324a] file:px-4 file:py-3 file:text-sm file:font-bold file:text-white hover:file:bg-[#1d5f8c]">
+                                        <p class="mt-2 text-xs leading-5 text-slate-500">Select 1–20 images, videos, PDFs, Word, Excel, or PowerPoint files. Maximum 250 MB per file.</p>
+                                    </div>
+                                    <div id="reviewSelectedFiles" class="mt-4 space-y-2" aria-live="polite">
+                                        <div class="rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500">No review files selected yet.</div>
+                                    </div>
+                                    <div class="mt-5 flex justify-end">
+                                        <button id="sendReviewPackageButton" type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#13324a] px-6 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#1d5f8c] disabled:cursor-not-allowed disabled:opacity-60">
+                                            <i class="fa-solid fa-paper-plane mr-2"></i> Send review to clinic
+                                        </button>
+                                    </div>
+                                </form>
+                                <?php elseif (!$reviewPackages): ?>
+                                <div class="mb-6 rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No review package was sent before this request left the review stage.</div>
+                                <?php endif; ?>
+
+                                <div class="space-y-4">
+                                    <?php if (!$reviewPackages): ?>
+                                        <div class="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm text-slate-500">No review rounds have been sent yet.</div>
+                                    <?php endif; ?>
+                                    <?php foreach ($reviewPackages as $reviewIndex => $package): ?>
+                                        <article class="rounded-2xl border <?= $reviewIndex === 0 ? 'border-cyan-200 bg-cyan-50/30' : 'border-slate-200 bg-white' ?> p-5">
+                                            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                                <div>
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <h3 class="font-bold text-[#13324a]">Review round #<?= (int) $package['id'] ?></h3>
+                                                        <?php if ($reviewIndex === 0): ?><span class="rounded-full bg-cyan-100 px-2.5 py-1 text-[11px] font-bold text-cyan-800">Latest</span><?php endif; ?>
+                                                        <?php if (!empty($package['approved_at'])): ?><span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Approved</span><?php endif; ?>
+                                                    </div>
+                                                    <p class="mt-1 text-xs text-slate-500">Sent <?= date('M d, Y, H:i', strtotime($package['sent_at'])) ?> by <?= htmlspecialchars($package['admin_name'] ?: 'Admin') ?></p>
+                                                </div>
+                                                <?php if (!empty($package['approved_at'])): ?><p class="text-xs font-semibold text-emerald-700">Approved <?= date('M d, Y, H:i', strtotime($package['approved_at'])) ?></p><?php endif; ?>
+                                            </div>
+                                            <?php if (!empty($package['summary'])): ?><div class="mt-4 whitespace-pre-wrap rounded-xl border border-slate-100 bg-white p-4 text-sm leading-6 text-slate-700"><?= htmlspecialchars($package['summary']) ?></div><?php endif; ?>
+                                            <div class="mt-4 grid gap-2 sm:grid-cols-2">
+                                                <?php foreach ($package['files'] as $file): ?>
+                                                    <?php $reviewFileName = uploadedFileDisplayName($file['original_name'], $file['file_path']); ?>
+                                                    <a href="<?= htmlspecialchars(getPresignedUrl($s3Client, $bucketName, $file['file_path'])) ?>" target="_blank" rel="noopener" class="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 transition hover:border-[#1d5f8c]">
+                                                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700"><i class="fa-solid fa-paperclip"></i></span>
+                                                        <span class="min-w-0 flex-1"><span class="block truncate text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($reviewFileName) ?>"><?= htmlspecialchars($reviewFileName) ?></span><span class="block text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'], $reviewFileName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'])) ?></span></span>
+                                                        <i class="fa-solid fa-arrow-up-right-from-square shrink-0 text-xs text-[#1d5f8c]"></i>
+                                                    </a>
+                                                <?php endforeach; ?>
+                                            </div>
+                                        </article>
+                                    <?php endforeach; ?>
+                                </div>
+                            </section>
+
                             <?php
                             $deliverableMeta = [
                                 'video' => ['title' => 'Plan Videos', 'icon' => 'fa-solid fa-video', 'tone' => 'bg-purple-50 text-purple-600'],
@@ -575,18 +651,54 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
                                         <i class="fa-solid fa-eye mr-1.5"></i> View receipt
                                     </a>
                                 </div>
-                                <?php if ($payment['status'] === 'pending_verification' && ($request['service_type'] !== 'surgical_guide' || $request['status'] === 'pending_payment')): ?>
+                                <?php if ($payment['status'] === 'pending_verification' && $request['service_type'] !== 'surgical_guide'): ?>
                                     <div class="flex gap-3 mt-4 border-t border-slate-200 pt-4">
                                         <button onclick="verifyPayment(<?= $payment['id'] ?>, 'approved')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm transition">Approve</button>
                                         <button onclick="verifyPayment(<?= $payment['id'] ?>, 'rejected')" class="bg-red-50 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 font-bold py-2 px-4 rounded-lg text-sm transition">Reject</button>
                                     </div>
                                 <?php elseif ($payment['status'] === 'pending_verification' && $request['service_type'] === 'surgical_guide'): ?>
                                     <div class="mt-4 border-t border-slate-200 pt-4 text-sm text-red-600">
-                                        This receipt cannot be reviewed because the request is not in the payment step.
+                                        Historical receipt only. Manual receipt review is disabled for Surgical Guide requests.
                                     </div>
                                 <?php endif; ?>
                             </div>
                         </div>
+                    <?php endif; ?>
+
+                    <?php if ($request['service_type'] === 'surgical_guide'): ?>
+                    <section class="mt-8 border-t border-slate-100 pt-6" aria-labelledby="requestChatTitle">
+                        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <h3 id="requestChatTitle" class="text-lg font-bold text-[#13324a]"><i class="fa-regular fa-comments mr-2 text-cyan-700"></i>Request conversation</h3>
+                                <p class="mt-1 text-xs text-slate-500">Messages do not update automatically. Select “Refresh messages” to see new replies.</p>
+                            </div>
+                            <button type="button" id="refreshMessagesButton" class="inline-flex shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-[#1d5f8c] hover:text-[#1d5f8c]">
+                                <i class="fa-solid fa-rotate mr-2"></i> Refresh messages
+                            </button>
+                        </div>
+                        <div id="requestChatStatus" class="mb-3 hidden rounded-xl p-3 text-sm font-semibold" role="status"></div>
+                        <div id="requestMessages" class="max-h-[32rem] space-y-3 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-live="polite">
+                            <?php if (!$requestMessages): ?>
+                                <div id="requestMessagesEmpty" class="py-8 text-center text-sm text-slate-500"><i class="fa-regular fa-comment-dots mb-3 block text-2xl text-slate-300"></i>No messages yet. Start the conversation about this case.</div>
+                            <?php endif; ?>
+                            <?php foreach ($requestMessages as $message): ?>
+                                <article data-message-id="<?= (int) $message['id'] ?>" class="flex <?= $message['sender_role'] === 'admin' ? 'justify-end' : 'justify-start' ?>">
+                                    <div class="max-w-[88%] rounded-2xl border px-4 py-3 <?= $message['sender_role'] === 'admin' ? 'border-[#1d5f8c] bg-[#13324a] text-white' : 'border-slate-200 bg-white text-slate-700' ?>">
+                                        <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs <?= $message['sender_role'] === 'admin' ? 'text-blue-100' : 'text-slate-400' ?>"><span class="font-bold"><?= htmlspecialchars($message['sender_name']) ?> · <?= $message['sender_role'] === 'admin' ? 'Admin' : 'Clinic' ?></span><time><?= date('M d, Y, H:i', strtotime($message['created_at'])) ?></time></div>
+                                        <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6"><?= htmlspecialchars($message['message_text']) ?></p>
+                                    </div>
+                                </article>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php if (surgicalGuideChatIsWritable($request['status'])): ?>
+                        <form id="requestMessageForm" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                            <div class="flex-1"><label for="requestMessageText" class="mb-2 block text-sm font-bold text-[#13324a]">Write a message</label><textarea id="requestMessageText" maxlength="<?= REQUEST_MESSAGE_MAX_LENGTH ?>" rows="3" class="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-[#1d5f8c] focus:ring-[#1d5f8c]" placeholder="Write a clear note about the case or review package."></textarea></div>
+                            <button id="sendMessageButton" type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white transition hover:bg-[#13324a] disabled:opacity-60"><i class="fa-solid fa-paper-plane mr-2"></i>Send message</button>
+                        </form>
+                        <?php else: ?>
+                        <div class="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"><i class="fa-solid fa-lock mr-2 text-slate-400"></i>This conversation is read-only because the request is completed or rejected.</div>
+                        <?php endif; ?>
+                    </section>
                     <?php endif; ?>
 
                     <div class="mt-8 pt-6 border-t border-slate-100">
@@ -613,6 +725,223 @@ function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
     </div>
     <script>
         const requestWorkflowCsrfToken = <?= json_encode($request_workflow_csrf_token) ?>;
+
+        const reviewFileInput = document.getElementById('reviewFiles');
+        const reviewFileList = document.getElementById('reviewSelectedFiles');
+        const reviewForm = document.getElementById('reviewPackageForm');
+
+        function compactFileSize(bytes) {
+            if (!Number.isFinite(bytes) || bytes < 1) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let value = bytes;
+            let index = 0;
+            while (value >= 1024 && index < units.length - 1) { value /= 1024; index++; }
+            return `${value.toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
+        }
+
+        function renderSelectedReviewFiles() {
+            if (!reviewFileInput || !reviewFileList) return;
+            reviewFileList.replaceChildren();
+            const files = Array.from(reviewFileInput.files);
+            if (!files.length) {
+                const empty = document.createElement('div');
+                empty.className = 'rounded-xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500';
+                empty.textContent = 'No review files selected yet.';
+                reviewFileList.appendChild(empty);
+                return;
+            }
+            files.forEach((file, index) => {
+                const row = document.createElement('div');
+                row.className = 'flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3';
+                row.dataset.reviewFileIndex = String(index);
+                const icon = document.createElement('span');
+                icon.className = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700';
+                icon.innerHTML = '<i class="fa-solid fa-file"></i>';
+                const details = document.createElement('span');
+                details.className = 'min-w-0 flex-1';
+                const name = document.createElement('span');
+                name.className = 'block truncate text-sm font-semibold text-slate-700';
+                name.textContent = file.name;
+                const meta = document.createElement('span');
+                meta.className = 'block text-xs text-slate-400';
+                meta.textContent = `${file.type || 'Unknown type'} · ${compactFileSize(file.size)}`;
+                details.append(name, meta);
+                const state = document.createElement('span');
+                state.className = 'review-upload-state shrink-0 text-xs font-bold text-slate-400';
+                state.textContent = 'Ready';
+                row.append(icon, details, state);
+                reviewFileList.appendChild(row);
+            });
+        }
+
+        async function uploadReviewFile(file, row) {
+            const state = row.querySelector('.review-upload-state');
+            state.textContent = 'Preparing…';
+            state.className = 'review-upload-state shrink-0 text-xs font-bold text-cyan-700';
+            const response = await fetch('../api/generate_review_upload_url.php', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    request_id: <?= (int) $request['id'] ?>,
+                    csrf_token: requestWorkflowCsrfToken,
+                    filename: file.name,
+                    content_type: file.type || 'application/octet-stream',
+                    file_size: file.size
+                })
+            });
+            const data = await response.json();
+            if (!response.ok || !data.presigned_url || !data.object_key) throw new Error(data.error || `Could not prepare ${file.name}.`);
+
+            state.textContent = 'Uploading 0%';
+            await new Promise((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open('PUT', data.presigned_url, true);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                xhr.upload.onprogress = event => {
+                    if (event.lengthComputable) state.textContent = `Uploading ${Math.round((event.loaded / event.total) * 100)}%`;
+                };
+                xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed for ${file.name}.`));
+                xhr.onerror = () => reject(new Error(`Network error while uploading ${file.name}.`));
+                xhr.send(file);
+            });
+            state.textContent = 'Uploaded';
+            state.className = 'review-upload-state shrink-0 text-xs font-bold text-emerald-600';
+            return data.object_key;
+        }
+
+        if (reviewFileInput) {
+            reviewFileInput.addEventListener('change', renderSelectedReviewFiles);
+        }
+        if (reviewForm) {
+            reviewForm.addEventListener('submit', async event => {
+                event.preventDefault();
+                const files = Array.from(reviewFileInput.files);
+                const button = document.getElementById('sendReviewPackageButton');
+                const errorBox = document.getElementById('reviewPackageError');
+                const successBox = document.getElementById('reviewPackageSuccess');
+                errorBox.classList.add('hidden');
+                successBox.classList.add('hidden');
+                if (!files.length || files.length > 20) {
+                    errorBox.textContent = 'Select between 1 and 20 review files.';
+                    errorBox.classList.remove('hidden');
+                    return;
+                }
+                button.disabled = true;
+                button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Uploading review…';
+                try {
+                    const rows = Array.from(reviewFileList.querySelectorAll('[data-review-file-index]'));
+                    const uploadedKeys = await Promise.all(files.map((file, index) => uploadReviewFile(file, rows[index])));
+                    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i>Saving review round…';
+                    const response = await fetch('../api/admin_send_review.php', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            request_id: <?= (int) $request['id'] ?>,
+                            csrf_token: requestWorkflowCsrfToken,
+                            summary: document.getElementById('reviewSummary').value.trim(),
+                            files: uploadedKeys
+                        })
+                    });
+                    const data = await response.json();
+                    if (!response.ok || !data.success) throw new Error(data.message || 'The review package could not be saved.');
+                    successBox.textContent = data.message;
+                    successBox.classList.remove('hidden');
+                    window.location.reload();
+                } catch (error) {
+                    errorBox.textContent = error.message;
+                    errorBox.classList.remove('hidden');
+                    reviewFileList.querySelectorAll('.review-upload-state').forEach(state => {
+                        if (state.textContent !== 'Uploaded') {
+                            state.textContent = 'Failed';
+                            state.className = 'review-upload-state shrink-0 text-xs font-bold text-red-600';
+                        }
+                    });
+                } finally {
+                    button.disabled = false;
+                    button.innerHTML = '<i class="fa-solid fa-paper-plane mr-2"></i>Send review to clinic';
+                }
+            });
+        }
+
+        const messagesContainer = document.getElementById('requestMessages');
+        const chatStatus = document.getElementById('requestChatStatus');
+
+        function latestMessageId() {
+            const items = messagesContainer ? messagesContainer.querySelectorAll('[data-message-id]') : [];
+            return items.length ? Number(items[items.length - 1].dataset.messageId) : 0;
+        }
+
+        function setChatStatus(message, isError = false) {
+            if (!chatStatus) return;
+            chatStatus.textContent = message;
+            chatStatus.className = `mb-3 rounded-xl border p-3 text-sm font-semibold ${isError ? 'border-red-100 bg-red-50 text-red-700' : 'border-cyan-100 bg-cyan-50 text-cyan-800'}`;
+        }
+
+        function appendChatMessage(message) {
+            if (!messagesContainer || messagesContainer.querySelector(`[data-message-id="${message.id}"]`)) return;
+            document.getElementById('requestMessagesEmpty')?.remove();
+            const article = document.createElement('article');
+            article.dataset.messageId = String(message.id);
+            article.className = `flex ${message.sender_role === 'admin' ? 'justify-end' : 'justify-start'}`;
+            const bubble = document.createElement('div');
+            bubble.className = `max-w-[88%] rounded-2xl border px-4 py-3 ${message.sender_role === 'admin' ? 'border-[#1d5f8c] bg-[#13324a] text-white' : 'border-slate-200 bg-white text-slate-700'}`;
+            const meta = document.createElement('div');
+            meta.className = `flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${message.sender_role === 'admin' ? 'text-blue-100' : 'text-slate-400'}`;
+            const sender = document.createElement('span');
+            sender.className = 'font-bold';
+            sender.textContent = `${message.sender_name} · ${message.sender_role === 'admin' ? 'Admin' : 'Clinic'}`;
+            const time = document.createElement('time');
+            time.textContent = message.created_label;
+            const body = document.createElement('p');
+            body.className = 'mt-2 whitespace-pre-wrap break-words text-sm leading-6';
+            body.textContent = message.message_text;
+            meta.append(sender, time);
+            bubble.append(meta, body);
+            article.appendChild(bubble);
+            messagesContainer.appendChild(article);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        document.getElementById('refreshMessagesButton')?.addEventListener('click', async event => {
+            const button = event.currentTarget;
+            button.disabled = true;
+            try {
+                const response = await fetch(`../api/request_messages.php?request_id=<?= (int) $request['id'] ?>&after_id=${latestMessageId()}&csrf_token=${encodeURIComponent(requestWorkflowCsrfToken)}`, {headers: {'Accept': 'application/json'}});
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || 'Messages could not be loaded.');
+                data.messages.forEach(appendChatMessage);
+                setChatStatus(data.messages.length ? `${data.messages.length} new message(s) loaded.` : 'No new messages.');
+            } catch (error) {
+                setChatStatus(error.message || 'Messages could not be loaded.', true);
+            } finally {
+                button.disabled = false;
+            }
+        });
+
+        document.getElementById('requestMessageForm')?.addEventListener('submit', async event => {
+            event.preventDefault();
+            const input = document.getElementById('requestMessageText');
+            const button = document.getElementById('sendMessageButton');
+            const messageText = input.value.trim();
+            if (!messageText) { setChatStatus('Write a message before sending.', true); return; }
+            button.disabled = true;
+            try {
+                const response = await fetch('../api/send_request_message.php', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({request_id: <?= (int) $request['id'] ?>, csrf_token: requestWorkflowCsrfToken, message_text: messageText})
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) throw new Error(data.message || 'The message could not be sent.');
+                appendChatMessage(data.message);
+                input.value = '';
+                setChatStatus('Message sent.');
+            } catch (error) {
+                setChatStatus(error.message || 'The message could not be sent.', true);
+            } finally {
+                button.disabled = false;
+            }
+        });
 
         function toggleRejectionReason() {
             const statusSelect = document.getElementById('statusSelect');

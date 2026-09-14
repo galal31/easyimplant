@@ -29,6 +29,11 @@ try {
         die("Request not found or unauthorized.");
     }
 
+    if ($request['service_type'] === 'surgical_guide') {
+        http_response_code(409);
+        die("Manual payment receipts are disabled for Surgical Guide requests. Online payment will be available after the payment gateway is connected.");
+    }
+
     if ($request['status'] !== 'pending_payment') {
         die("Payment is not currently pending for this request.");
     }

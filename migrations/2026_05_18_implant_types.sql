@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS `implant_types` (
+  `id` INT(11) AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(190) NOT NULL,
+  `brand` VARCHAR(190) DEFAULT NULL,
+  `notes` TEXT DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_implant_type_name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE `surgical_guide_details`
+  ADD COLUMN IF NOT EXISTS `implant_type_id` INT(11) DEFAULT NULL AFTER `implant_type`,
+  ADD COLUMN IF NOT EXISTS `implant_type_other` VARCHAR(190) DEFAULT NULL AFTER `implant_type_id`;

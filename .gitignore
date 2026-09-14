@@ -1,0 +1,32 @@
+# Local credentials and environment-specific configuration
+/includes/database_config.php
+/includes/r2_config.php
+.env
+.env.*
+!.env.example
+
+# Installed dependencies
+/vendor/
+
+# Runtime and user-uploaded data
+/uploads/
+/tmp/
+/database_backups/
+*.log
+
+# Local database snapshot (may contain users or operational data)
+/database_schema.sql
+
+# Local archives and backup copies
+*.zip
+* copy.php
+
+# Editor and agent-local settings
+/.vscode/
+/.kilo/
+
+# Operating-system files
+.DS_Store
+Thumbs.db
+desktop.ini
+

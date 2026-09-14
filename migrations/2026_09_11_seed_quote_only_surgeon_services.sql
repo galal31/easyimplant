@@ -1,0 +1,35 @@
+-- Quote-only surgeon services transcribed from the supplied service lists.
+-- Implant for one, All-on-4, and All-on-6 are intentionally excluded because
+-- they are handled by the dedicated priced Dental Implant request flow.
+
+INSERT IGNORE INTO `surgeon_services` (`name`, `notes`, `is_active`) VALUES
+  ('Diagnosis & Treatment Planning', NULL, 1),
+  ('Simple Extraction', NULL, 1),
+  ('Surgical Extraction', NULL, 1),
+  ('Wisdom Tooth Extraction', NULL, 1),
+  ('Impacted Wisdom Tooth Extraction', NULL, 1),
+  ('Remaining Roots Extraction', NULL, 1),
+  ('Surgical Guide', NULL, 1),
+  ('Additional Implant Surgical Guide', NULL, 1),
+  ('Stackable Guide', NULL, 1),
+  ('Bone Reduction Guide', NULL, 1),
+  ('Gingivectomy', NULL, 1),
+  ('Crown Lengthening', NULL, 1),
+  ('GBR', NULL, 1),
+  ('Closed Sinus Lift', NULL, 1),
+  ('Open Sinus Lift', NULL, 1),
+  ('Incisional Biopsy', NULL, 1),
+  ('Cyst Removal', NULL, 1),
+  ('Tumors and Resection', NULL, 1),
+  ('Trauma', NULL, 1),
+  ('Frenectomy', NULL, 1),
+  ('Soft Tissue Grafts', NULL, 1),
+  ('Tongue Tie', NULL, 1),
+  ('Implant Crown (Hybrid Zirconia) - Each', NULL, 1),
+  ('Temporary Removable Crown - Each', NULL, 1),
+  ('Immediate PMMA', NULL, 1),
+  ('Multi-Unit Abutment', NULL, 1),
+  ('Metal Framework (Bar) for One Arch', NULL, 1),
+  ('TMJ & Orofacial Pain Diagnosis', NULL, 1),
+  ('TMJ Splint', NULL, 1),
+  ('Muscle Injection', NULL, 1);

@@ -70,6 +70,20 @@ Easy Implant منصة لتنظيم التعامل بين عيادات الأسن
 - الترحيل المحلي هو `migrations/2026_09_15_surgical_guide_review_approval_chat.sql`، والواجهات الجديدة هي `api/generate_review_upload_url.php` و`api/admin_send_review.php` و`api/approve_review.php` و`api/request_messages.php` و`api/send_request_message.php`.
 - لم يتغير تدفق `surgeon_request` أو التسعير أو حساب الـ Guided Kit أو منطق ملفات التسليم النهائي.
 
+## تصميم صفحة تفاصيل طلب الدليل الجراحي — Clinical Case Desk
+
+آخر تحديث: 2026-09-15
+
+- أُعيد تصميم `view_request.php` و`admin/admin_view_request.php` بنمط "Clinical Case Desk": الحاوية الرئيسية `max-w-7xl`، وتخطيط من عمودين `grid-template-columns: minmax(0,1fr) 380px` على الديسكتوب.
+- الشات الجانبي على الديسكتوب: عمود ثابت بعرض 380px، موضعه `position: sticky; top: 73px`، يمتد لارتفاع الشاشة مع تمرير داخلي للرسائل فقط.
+- عنصر الشات واحد (`#requestChatPanel`) مشترك عبر `includes/request_chat_panel.php`، ينتقل بين العمود الجانبي والـ Drawer بـ JS بدون تكرار IDs أو event listeners.
+- على الموبايل (< 1024px): زر عائم (`#chatFabButton`) بحجم 60px، Bubble تنبيه "Click here to view chat" تظهر بعد 5-6 ثوانٍ وتتكرر كل 25-30 ثانية حتى يفتح المستخدم الشات أو تُسجَّل الجلسة في `sessionStorage`.
+- Drawer (`#mobileChatDrawer`) يفتح من أسفل الشاشة بنسبة 90dvh مع backdrop يمنع تمرير الصفحة.
+- صفحة الأدمن: معلومات العيادة انتقلت من sidebar ثابت 1/3 إلى Summary Cards أفقية مدمجة أعلى الصفحة.
+- لم يتغير أي منطق Backend: APIs، قاعدة البيانات، دورة الحالات، موافقة العيادة، الدفع، surgeon_request.
+- لا Polling ولا WebSocket ولا setInterval يستدعي شبكة — التحديث يدوي فقط.
+
+
 ## التقنية العامة
 
 - المشروع مبني بلغة PHP مباشرة بدون إطار عمل كبير.

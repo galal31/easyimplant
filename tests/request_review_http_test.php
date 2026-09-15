@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../includes/db_connect.php';
+require_once __DIR__ . '/../includes/request_review.php';
 
 function assertHttpTest(bool $condition, string $message): void
 {
@@ -204,6 +205,16 @@ try {
     assertHttpTest($clinicMessage['status'] === 200 && $adminMessage['status'] === 200, 'Both roles must be able to send active-request messages.');
     $manualRefresh = localHttp('GET', "api/request_messages.php?request_id=$reviewRequestId&after_id=0&csrf_token=$clinicToken", $clinicSession);
     assertHttpTest($manualRefresh['status'] === 200 && count($manualRefresh['json']['messages'] ?? []) === 2, 'Manual refresh must return both chronological messages.');
+    $limitedRefresh = localHttp('GET', "api/request_messages.php?request_id=$reviewRequestId&after_id=0&csrf_token=$clinicToken", $clinicSession);
+    assertHttpTest($limitedRefresh['status'] === 429, 'A repeated clinic refresh inside the cooldown must return HTTP 429.');
+    assertHttpTest(
+        ($limitedRefresh['json']['code'] ?? '') === 'chat_refresh_rate_limited'
+        && (int) ($limitedRefresh['json']['retry_after'] ?? 0) >= 1
+        && (int) ($limitedRefresh['json']['retry_after'] ?? 0) <= REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS,
+        'The rate-limit response must include a bounded retry_after value.'
+    );
+    $adminRefresh = localHttp('GET', "api/request_messages.php?request_id=$reviewRequestId&after_id=0&csrf_token=$adminToken", $adminSession);
+    assertHttpTest($adminRefresh['status'] === 200, 'The refresh cooldown must be isolated between the clinic and admin sessions.');
 
     $oldApproval = localHttp('POST', 'api/approve_review.php', $clinicSession, [
         'request_id' => $reviewRequestId,

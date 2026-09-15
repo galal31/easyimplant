@@ -34,6 +34,14 @@ assertReviewTest(detectRequestReviewFileType("\x89PNG\x0D\x0A\x1A\x0Arest") === 
 assertReviewTest(detectRequestReviewFileType('%PDF-1.7') === 'application/pdf', 'PDF signature detection failed.');
 assertReviewTest(requestReviewDetectedTypeMatches('docx', 'application/zip'), 'OOXML document signature mapping failed.');
 
+$_SESSION['request_message_refresh_limits'] = [];
+assertReviewTest(consumeRequestMessageRefreshLimit(10, 20, 'clinic', 1000.0) === 0, 'The first message refresh must be allowed.');
+assertReviewTest(consumeRequestMessageRefreshLimit(10, 20, 'clinic', 1001.0) === 4, 'A rapid repeat refresh must return the remaining cooldown.');
+assertReviewTest(consumeRequestMessageRefreshLimit(11, 20, 'clinic', 1001.0) === 0, 'The cooldown must be isolated per request.');
+assertReviewTest(consumeRequestMessageRefreshLimit(10, 21, 'clinic', 1001.0) === 0, 'The cooldown must be isolated per user.');
+assertReviewTest(consumeRequestMessageRefreshLimit(10, 20, 'clinic', 1005.0) === 0, 'Refresh must be allowed after the cooldown expires.');
+unset($_SESSION['request_message_refresh_limits']);
+
 $suffix = bin2hex(random_bytes(5));
 $insertUser = $pdo->prepare("INSERT INTO users
     (full_name, clinic_name, email, password, phone, country, role, status)
@@ -140,6 +148,7 @@ foreach (['admin/admin_view_request.php', 'view_request.php'] as $page) {
     $source = file_get_contents(__DIR__ . '/../' . $page);
     assertReviewTest(!preg_match('/setInterval|WebSocket|EventSource|long\s*poll/i', $source), "$page must not contain automatic chat polling.");
     assertReviewTest(substr_count($source, 'request_messages.php?request_id=') === 1, "$page must make one manual message-refresh request per click handler.");
+    assertReviewTest(str_contains($source, 'startChatRefreshCooldown'), "$page must show the manual refresh cooldown in its button.");
 }
 
 $uploadSource = file_get_contents(__DIR__ . '/../api/upload_receipt.php');

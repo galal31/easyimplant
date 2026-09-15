@@ -38,6 +38,22 @@ try {
         (int) $_SESSION['user_id'],
         $role
     );
+    $retryAfter = consumeRequestMessageRefreshLimit(
+        (int) $requestId,
+        (int) $_SESSION['user_id'],
+        $role
+    );
+    if ($retryAfter > 0) {
+        header('Retry-After: ' . $retryAfter);
+        http_response_code(429);
+        echo json_encode([
+            'success' => false,
+            'code' => 'chat_refresh_rate_limited',
+            'message' => "Please wait {$retryAfter} second(s) before refreshing messages again.",
+            'retry_after' => $retryAfter,
+        ]);
+        exit;
+    }
     $messages = array_map(
         'requestMessageJson',
         fetchRequestMessages($pdo, (int) $requestId, max(0, (int) $afterId))

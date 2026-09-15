@@ -38,7 +38,7 @@
         <button
             type="button"
             id="refreshMessagesButton"
-            class="shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-[#1d5f8c] hover:text-[#1d5f8c] focus-visible:outline-2 focus-visible:outline-[#0891b2]"
+            class="shrink-0 inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:border-[#1d5f8c] hover:text-[#1d5f8c] disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-[#0891b2]"
             title="Load new messages">
             <i class="fa-solid fa-rotate mr-1.5"></i>Refresh
         </button>

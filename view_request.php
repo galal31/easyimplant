@@ -874,19 +874,55 @@ function appendChatMessage(message) {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
+const chatRefreshCooldownSeconds = <?= (int) REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS ?>;
+const chatRefreshDefaultMarkup = '<i class="fa-solid fa-rotate mr-1.5"></i>Refresh';
+let chatRefreshCooldownUntil = 0;
+let chatRefreshCooldownTimer = null;
+
+function renderChatRefreshCooldown(button) {
+    if (!button) return;
+    if (chatRefreshCooldownTimer) clearTimeout(chatRefreshCooldownTimer);
+    const remaining = Math.ceil((chatRefreshCooldownUntil - Date.now()) / 1000);
+    if (remaining > 0) {
+        button.disabled = true;
+        button.innerHTML = `<i class="fa-regular fa-clock mr-1.5"></i>Refresh in ${remaining}s`;
+        chatRefreshCooldownTimer = setTimeout(() => renderChatRefreshCooldown(button), 250);
+        return;
+    }
+    chatRefreshCooldownUntil = 0;
+    chatRefreshCooldownTimer = null;
+    button.disabled = false;
+    button.innerHTML = chatRefreshDefaultMarkup;
+}
+
+function startChatRefreshCooldown(button, seconds = chatRefreshCooldownSeconds) {
+    const safeSeconds = Math.max(1, Math.min(60, Math.ceil(Number(seconds) || chatRefreshCooldownSeconds)));
+    chatRefreshCooldownUntil = Date.now() + (safeSeconds * 1000);
+    renderChatRefreshCooldown(button);
+}
+
 document.getElementById('refreshMessagesButton')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Refreshing…';
     try {
         const response = await fetch(`api/request_messages.php?request_id=<?= (int) $request['id'] ?>&after_id=${latestMessageId()}&csrf_token=${encodeURIComponent(requestWorkflowCsrfToken)}`, {headers: {'Accept': 'application/json'}});
         const data = await response.json();
+        if (response.status === 429) {
+            startChatRefreshCooldown(button, data.retry_after);
+            throw new Error(data.message || 'Please wait before refreshing messages again.');
+        }
         if (!response.ok || !data.success) throw new Error(data.message || 'Messages could not be loaded.');
         data.messages.forEach(appendChatMessage);
         setChatStatus(data.messages.length ? `${data.messages.length} new message(s) loaded.` : 'No new messages.');
+        startChatRefreshCooldown(button);
     } catch (error) {
         setChatStatus(error.message || 'Messages could not be loaded.', true);
     } finally {
-        button.disabled = false;
+        if (!chatRefreshCooldownUntil) {
+            button.disabled = false;
+            button.innerHTML = chatRefreshDefaultMarkup;
+        }
     }
 });
 

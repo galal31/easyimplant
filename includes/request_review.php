@@ -1,7 +1,38 @@
 <?php
 
 const REQUEST_MESSAGE_MAX_LENGTH = 4000;
+const REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS = 5;
 const REQUEST_REVIEW_MAX_FILE_SIZE = 262144000;
+
+function consumeRequestMessageRefreshLimit(
+    int $requestId,
+    int $userId,
+    string $role,
+    ?float $now = null
+): int {
+    $now ??= microtime(true);
+    $sessionKey = 'request_message_refresh_limits';
+    $limits = $_SESSION[$sessionKey] ?? [];
+    if (!is_array($limits)) $limits = [];
+
+    $limitKey = $role . ':' . $userId . ':' . $requestId;
+    $lastRefresh = (float) ($limits[$limitKey] ?? 0);
+    $remaining = REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS - ($now - $lastRefresh);
+    if ($remaining > 0) {
+        return min(
+            REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS,
+            max(1, (int) ceil($remaining))
+        );
+    }
+
+    foreach ($limits as $key => $timestamp) {
+        if ((float) $timestamp <= $now - 60) unset($limits[$key]);
+    }
+    $limits[$limitKey] = $now;
+    $_SESSION[$sessionKey] = $limits;
+
+    return 0;
+}
 
 function surgicalGuideChatIsWritable(string $status): bool
 {

@@ -2,6 +2,7 @@
 // clinic_dashboard.php
 require_once 'includes/db_connect.php';
 require_once __DIR__ . '/includes/system_settings.php';
+require_once __DIR__ . '/includes/xpay.php';
 
 // Check if user is logged in and is a clinic
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'clinic') {
@@ -14,6 +15,10 @@ $full_name = $_SESSION['full_name'];
 $clinic_name = $_SESSION['clinic_name'];
 $clinicSystemIconUrl = getSystemIconUrl($pdo);
 $clinicIsInEgypt = false;
+if (empty($_SESSION['request_workflow_csrf_token'])) {
+    $_SESSION['request_workflow_csrf_token'] = bin2hex(random_bytes(32));
+}
+$requestWorkflowCsrfToken = $_SESSION['request_workflow_csrf_token'];
 
 // Fetch recent requests for this clinic
 try {
@@ -166,6 +171,15 @@ function getServiceType($type) {
                                     <a href="view_request.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]">
                                         View Details
                                     </a>
+                                    <?php if ($req['status'] === 'pending_payment' && $req['service_type'] === 'surgical_guide' && xpayIsConfigured()): ?>
+                                    <form method="post" action="api/create_xpay_checkout.php" class="ml-2 inline-block">
+                                        <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>" />
+                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($requestWorkflowCsrfToken) ?>" />
+                                        <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#1d5f8c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#13324a]">
+                                            <i class="fa-solid fa-lock mr-1.5"></i> Pay with XPay
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
                                     
                                     <?php if ($req['status'] === 'pending_payment' && $req['service_type'] !== 'surgical_guide'): ?>
                                     <a href="upload_receipt.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-200 ml-2">

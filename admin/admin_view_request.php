@@ -813,35 +813,49 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
 
                 <?php endif; /* end $details */ ?>
 
-                <!-- ── Payment Receipt ── -->
+                <!-- ── Payment ── -->
                 <?php if ($payment): ?>
                 <div class="case-card">
                     <div class="case-card-header">
                         <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><i class="fa-solid fa-receipt"></i></div>
-                        <h2 class="text-base font-bold text-[#13324a]">Payment Receipt</h2>
+                        <h2 class="text-base font-bold text-[#13324a]">Payment</h2>
                     </div>
                     <div class="case-card-body">
                         <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                             <div class="flex items-center justify-between gap-4 mb-4">
                                 <div>
-                                    <p class="text-sm font-bold text-[#13324a]">Amount: <?= $payment['amount'] ? number_format($payment['amount'], 2) : 'Not specified' ?></p>
-                                    <p class="text-xs text-slate-500">Uploaded: <?= date('M d, Y, H:i', strtotime($payment['uploaded_at'])) ?></p>
+                                    <p class="text-sm font-bold text-[#13324a]">Amount: <?= $payment['amount'] ? htmlspecialchars(formatCurrencyMoney($payment['amount'], $payment['currency'] ?? 'EGP')) : 'Not specified' ?></p>
+                                    <p class="text-xs text-slate-500"><?= ($payment['payment_source'] ?? 'manual_receipt') === 'xpay' ? 'Confirmed' : 'Uploaded' ?>: <?= date('M d, Y, H:i', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></p>
                                 </div>
+                                <span class="rounded-full px-3 py-1 text-xs font-bold <?= $payment['status'] === 'approved' ? 'bg-emerald-100 text-emerald-700' : ($payment['status'] === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') ?>"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $payment['status']))) ?></span>
                             </div>
-                            <?php
-                                $receiptUrl  = getPresignedUrl($s3Client, $bucketName, $payment['receipt_file_path']);
-                                $receiptName = uploadedFileDisplayName($payment['receipt_original_name'] ?? null, $payment['receipt_file_path']);
-                            ?>
-                            <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-                                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1d5f8c]"><i class="fa-solid fa-receipt"></i></span>
-                                <span class="filename-cell min-w-0 flex-1">
-                                    <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($receiptName) ?>"><?= htmlspecialchars($receiptName) ?></span>
-                                    <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span>
-                                </span>
-                                <a href="<?= htmlspecialchars($receiptUrl) ?>" target="_blank" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#1d5f8c] px-3 py-2 text-xs font-bold text-white hover:bg-[#13324a] transition">
-                                    <i class="fa-solid fa-eye mr-1.5"></i> View receipt
-                                </a>
-                            </div>
+                            <?php if (($payment['payment_source'] ?? 'manual_receipt') === 'xpay'): ?>
+                                <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                                    <div class="flex items-center gap-3">
+                                        <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600"><i class="fa-solid fa-shield-halved"></i></span>
+                                        <div class="min-w-0">
+                                            <p class="text-sm font-bold text-emerald-800">Confirmed automatically by XPay</p>
+                                            <p class="truncate text-xs text-emerald-700">Session: <?= htmlspecialchars((string) $payment['provider_session_id']) ?></p>
+                                            <p class="truncate text-xs text-emerald-700">Payment Intent: <?= htmlspecialchars((string) $payment['provider_payment_intent_id']) ?></p>
+                                        </div>
+                                    </div>
+                                </div>
+                            <?php else: ?>
+                                <?php
+                                    $receiptUrl  = getPresignedUrl($s3Client, $bucketName, $payment['receipt_file_path']);
+                                    $receiptName = uploadedFileDisplayName($payment['receipt_original_name'] ?? null, $payment['receipt_file_path']);
+                                ?>
+                                <div class="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-[#1d5f8c]"><i class="fa-solid fa-receipt"></i></span>
+                                    <span class="filename-cell min-w-0 flex-1">
+                                        <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($receiptName) ?>"><?= htmlspecialchars($receiptName) ?></span>
+                                        <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span>
+                                    </span>
+                                    <a href="<?= htmlspecialchars($receiptUrl) ?>" target="_blank" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#1d5f8c] px-3 py-2 text-xs font-bold text-white hover:bg-[#13324a] transition">
+                                        <i class="fa-solid fa-eye mr-1.5"></i> View receipt
+                                    </a>
+                                </div>
+                            <?php endif; ?>
                             <?php if ($payment['status'] === 'pending_verification' && !$isSurgicalGuide): ?>
                                 <div class="flex gap-3 mt-4 border-t border-slate-200 pt-4">
                                     <button onclick="verifyPayment(<?= $payment['id'] ?>, 'approved')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm transition">Approve</button>

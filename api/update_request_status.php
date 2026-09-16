@@ -61,6 +61,25 @@ try {
             echo json_encode(['error' => 'This status change is not allowed from the current request step. Please refresh the page.']);
             exit;
         }
+
+        if ($old_status === 'pending_payment' && $status === 'rejected') {
+            $activeCheckoutStmt = $pdo->prepare("SELECT id FROM xpay_checkout_sessions
+                WHERE request_id = :request_id
+                  AND payment_status <> 'paid'
+                  AND status IN ('creating', 'open')
+                  AND (
+                    (expires_at IS NOT NULL AND expires_at > UTC_TIMESTAMP())
+                    OR (expires_at IS NULL AND created_at > UTC_TIMESTAMP() - INTERVAL 30 MINUTE)
+                  )
+                LIMIT 1");
+            $activeCheckoutStmt->execute([':request_id' => $request_id]);
+            if ($activeCheckoutStmt->fetchColumn()) {
+                $pdo->rollBack();
+                http_response_code(409);
+                echo json_encode(['error' => 'This request has an active XPay checkout. Wait for it to expire before rejecting the request.']);
+                exit;
+            }
+        }
     } elseif ($status === 'rejected' && $reason === '') {
         // Keep the existing surgeon-request behavior unchanged.
         $pdo->rollBack();

@@ -8,6 +8,7 @@ require_once 'includes/r2_config.php';
 require_once 'includes/request_file_metadata.php';
 require_once 'includes/request_workflow.php';
 require_once 'includes/request_review.php';
+require_once 'includes/xpay.php';
 
 use Aws\Exception\AwsException;
 
@@ -599,7 +600,23 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <?php elseif ($request['status'] === 'pending_payment'): ?>
                                         <div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                                             <p class="font-bold"><i class="fa-solid fa-circle-check mr-2"></i>The plan is approved.</p>
-                                            <p class="mt-1 text-xs leading-5">Online payment will become available after the payment gateway is connected. No receipt or payment is required here now.</p>
+                                            <p class="mt-1 text-xs leading-5">Pay the approved request total securely through XPay. Production starts only after XPay confirms the payment.</p>
+                                            <?php if (!empty($_GET['xpay_error'])): ?>
+                                                <div class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                                                    The checkout could not be started. Please try again, or contact support if the problem continues.
+                                                </div>
+                                            <?php endif; ?>
+                                            <?php if (xpayIsConfigured()): ?>
+                                                <form method="post" action="api/create_xpay_checkout.php" class="mt-4">
+                                                    <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>" />
+                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($request_workflow_csrf_token) ?>" />
+                                                    <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#13324a] sm:w-auto">
+                                                        <i class="fa-solid fa-lock mr-2"></i> Pay <?= htmlspecialchars(formatMoney($details['total_price'] ?? 0)) ?> with XPay
+                                                    </button>
+                                                </form>
+                                            <?php else: ?>
+                                                <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">Online payment is temporarily unavailable while the gateway configuration is completed.</p>
+                                            <?php endif; ?>
                                         </div>
                                     <?php endif; ?>
 
@@ -717,11 +734,11 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                     </div>
                 <?php endif; ?>
 
-                <!-- ── Payment Receipt (read-only for surgical guide) ── -->
+                <!-- ── Payment ── -->
                 <div class="case-card">
                     <div class="case-card-header">
                         <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><i class="fa-solid fa-receipt"></i></div>
-                        <h2 class="text-base font-bold text-[#13324a]">Payment Receipt</h2>
+                        <h2 class="text-base font-bold text-[#13324a]">Payment</h2>
                     </div>
                     <div class="case-card-body">
                         <?php if ($payment): ?>
@@ -733,24 +750,35 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     </p>
                                 </div>
                                 <div class="text-right">
-                                    <p class="info-label">Uploaded On</p>
-                                    <p class="text-sm font-semibold text-slate-700"><?= date('M d, Y', strtotime($payment['uploaded_at'])) ?></p>
+                                    <p class="info-label"><?= ($payment['payment_source'] ?? 'manual_receipt') === 'xpay' ? 'Confirmed On' : 'Uploaded On' ?></p>
+                                    <p class="text-sm font-semibold text-slate-700"><?= date('M d, Y', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></p>
                                 </div>
                             </div>
-                            <?php
-                                $receiptUrl  = getPresignedUrl($s3Client, $bucketName, $payment['receipt_file_path']);
-                                $receiptName = uploadedFileDisplayName($payment['receipt_original_name'] ?? null, $payment['receipt_file_path']);
-                            ?>
-                            <a href="<?= htmlspecialchars($receiptUrl) ?>" target="_blank" class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-[#1d5f8c] hover:bg-white">
-                                <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#1d5f8c] shadow-sm"><i class="fa-solid fa-receipt"></i></span>
-                                <span class="filename-cell min-w-0 flex-1">
-                                    <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($receiptName) ?>"><?= htmlspecialchars($receiptName) ?></span>
-                                    <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span>
-                                </span>
-                                <span class="shrink-0 text-xs font-bold text-[#1d5f8c]">View receipt <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></span>
-                            </a>
-                            <?php if ($isSurgicalGuide): ?>
-                                <p class="mt-3 text-xs text-slate-500 italic">This receipt is shown for historical reference only. Manual receipts are disabled for Surgical Guide requests.</p>
+                            <?php if (($payment['payment_source'] ?? 'manual_receipt') === 'xpay'): ?>
+                                <div class="flex w-full items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left">
+                                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm"><i class="fa-solid fa-shield-halved"></i></span>
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block text-sm font-bold text-emerald-800">Paid securely through XPay</span>
+                                        <span class="block truncate text-xs text-emerald-700">Session <?= htmlspecialchars((string) $payment['provider_session_id']) ?></span>
+                                    </span>
+                                    <span class="shrink-0 text-sm font-extrabold text-emerald-800"><?= htmlspecialchars(formatCurrencyMoney($payment['amount'], $payment['currency'] ?? 'EGP')) ?></span>
+                                </div>
+                            <?php else: ?>
+                                <?php
+                                    $receiptUrl  = getPresignedUrl($s3Client, $bucketName, $payment['receipt_file_path']);
+                                    $receiptName = uploadedFileDisplayName($payment['receipt_original_name'] ?? null, $payment['receipt_file_path']);
+                                ?>
+                                <a href="<?= htmlspecialchars($receiptUrl) ?>" target="_blank" class="flex w-full items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-left transition hover:border-[#1d5f8c] hover:bg-white">
+                                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#1d5f8c] shadow-sm"><i class="fa-solid fa-receipt"></i></span>
+                                    <span class="filename-cell min-w-0 flex-1">
+                                        <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($receiptName) ?>"><?= htmlspecialchars($receiptName) ?></span>
+                                        <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span>
+                                    </span>
+                                    <span class="shrink-0 text-xs font-bold text-[#1d5f8c]">View receipt <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></span>
+                                </a>
+                                <?php if ($isSurgicalGuide): ?>
+                                    <p class="mt-3 text-xs text-slate-500 italic">This receipt is shown for historical reference only. Manual receipts are disabled for Surgical Guide requests.</p>
+                                <?php endif; ?>
                             <?php endif; ?>
                             <?php if ($payment['status'] === 'rejected' && $request['status'] === 'pending_payment' && !$isSurgicalGuide): ?>
                                 <div class="mt-4 text-center">
@@ -762,8 +790,8 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                             <div class="text-center py-6 text-slate-500">
                                 <div class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400 mb-3"><i class="fa-solid fa-file-invoice text-xl"></i></div>
                                 <?php if ($isSurgicalGuide): ?>
-                                    <p class="text-sm font-semibold text-[#13324a]">Manual receipts are not used for this request.</p>
-                                    <p class="mt-1 text-xs leading-5 text-slate-500">Online payment will appear here after the payment gateway is connected.</p>
+                                    <p class="text-sm font-semibold text-[#13324a]">No confirmed payment yet.</p>
+                                    <p class="mt-1 text-xs leading-5 text-slate-500">A successful XPay payment will appear here after the signed confirmation is received.</p>
                                 <?php else: ?>
                                     <p class="text-sm font-medium">No payment receipt uploaded yet.</p>
                                 <?php endif; ?>

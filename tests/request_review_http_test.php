@@ -233,7 +233,41 @@ try {
     assertHttpTest($paymentsBefore === $paymentsAfter, 'Review approval must not create a payment.');
     assertHttpTest($pdo->query("SELECT status FROM requests WHERE id = $reviewRequestId")->fetchColumn() === 'pending_payment', 'HTTP approval must move the request to pending_payment only.');
     $approvedPage = localHttp('GET', "view_request.php?id=$reviewRequestId", $clinicSession);
-    assertHttpTest($approvedPage['status'] === 200 && !str_contains($approvedPage['body'], 'id="approveReviewButton"') && str_contains($approvedPage['body'], 'Online payment will become available'), 'Approved page must remove approval and receipt actions and explain the future online payment step.');
+    assertHttpTest(
+        $approvedPage['status'] === 200
+            && !str_contains($approvedPage['body'], 'id="approveReviewButton"')
+            && !str_contains($approvedPage['body'], 'Upload Receipt')
+            && str_contains($approvedPage['body'], 'Pay the approved request total securely through XPay')
+            && str_contains($approvedPage['body'], 'Production starts only after XPay confirms the payment'),
+        'Approved page must remove approval/manual receipt actions and explain the XPay confirmation step.'
+    );
+
+    $activeCheckoutStmt = $pdo->prepare("INSERT INTO xpay_checkout_sessions
+        (request_id, user_id, idempotency_key, return_token, xpay_session_id, checkout_url,
+         status, payment_status, amount_minor, currency, livemode, expires_at)
+        VALUES (:request_id, :user_id, :idempotency_key, :return_token, :session_id,
+                :checkout_url, 'open', 'unpaid', 10000, 'EGP', 0,
+                DATE_ADD(UTC_TIMESTAMP(), INTERVAL 30 MINUTE))");
+    $activeCheckoutStmt->execute([
+        ':request_id' => $reviewRequestId,
+        ':user_id' => $clinicId,
+        ':idempotency_key' => 'http-test-' . $suffix,
+        ':return_token' => hash('sha256', 'http-return-' . $suffix),
+        ':session_id' => 'cs_test_http_' . $suffix,
+        ':checkout_url' => 'https://checkout.xpay.app/c/cs_test_http_' . $suffix,
+    ]);
+    $rejectDuringCheckoutContext = stream_context_create(['http' => [
+        'method' => 'POST',
+        'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
+        'content' => http_build_query(['request_id' => $reviewRequestId, 'status' => 'rejected', 'csrf_token' => $adminToken]),
+    ]]);
+    $rejectDuringCheckoutBody = file_get_contents('http://127.0.0.1/easyimplant/api/update_request_status.php', false, $rejectDuringCheckoutContext);
+    $rejectDuringCheckoutStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest($rejectDuringCheckoutStatus === 409 && str_contains((string) $rejectDuringCheckoutBody, 'active XPay checkout'), 'An active XPay checkout must block request rejection.');
+    assertHttpTest($pdo->query("SELECT status FROM requests WHERE id = $reviewRequestId")->fetchColumn() === 'pending_payment', 'Blocked rejection must leave the request in pending_payment.');
+    $pdo->prepare('DELETE FROM xpay_checkout_sessions WHERE request_id = :request_id')->execute([':request_id' => $reviewRequestId]);
+
     $doubleApproval = localHttp('POST', 'api/approve_review.php', $clinicSession, [
         'request_id' => $reviewRequestId,
         'package_id' => $packageIds[1],

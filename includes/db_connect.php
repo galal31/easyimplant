@@ -36,8 +36,9 @@ try {
     die("A database error occurred. Please try again later.");
 }
 
-// Ensure session starts securely
-if (session_status() === PHP_SESSION_NONE) {
+// Ensure session starts securely. Public return pages may opt out so a cross-site
+// redirect cannot replace an existing SameSite=Strict clinic session cookie.
+if (!defined('EASYIMPLANT_SKIP_SESSION') && session_status() === PHP_SESSION_NONE) {
     // Session security settings
     ini_set('session.cookie_httponly', 1); // Prevent JavaScript access to session cookie
     ini_set('session.use_only_cookies', 1); // Only use cookies for sessions

@@ -78,7 +78,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => 'The plan was approved. Online payment will become available after the payment gateway is connected.',
+        'message' => 'The plan was approved. You can now pay securely through XPay.',
         'status' => 'pending_payment',
     ]);
 } catch (DomainException|RuntimeException $e) {

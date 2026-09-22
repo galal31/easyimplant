@@ -1,6 +1,6 @@
 # سياق مشروع Easy Implant
 
-آخر تحديث: 2026-09-15
+آخر تحديث: 2026-09-23
 
 ## الغرض من الملف
 
@@ -40,7 +40,7 @@ Easy Implant منصة لتنظيم التعامل بين عيادات الأسن
 - عند التأكيد الصحيح يُنشأ سجل `payments` مع `payment_source = xpay` وحالته `approved` ومعرّفي Checkout Session وPayment Intent، ثم ينتقل الطلب داخل معاملة واحدة من `pending_payment` إلى `in_progress` عبر مصدر `gateway_payment_confirmation`.
 - صفحة `xpay_return.php` تعرض نتيجة آمنة بواسطة Return Token عشوائي، لكنها لا تعتمد الدفع. يفيد ذلك أيضًا لأن Cookie الجلسة الحالية مضبوط على `SameSite=Strict` وقد لا يصل في أول رجوع مباشر من XPay.
 - يمنع رفض طلب دليل لديه جلسة XPay نشطة وغير مدفوعة حتى تنتهي الجلسة، لتقليل احتمال دفع العميل في نفس لحظة إغلاق الطلب. إذا وصل تأكيد صحيح بعد خروج الطلب من مرحلة الدفع لسبب استثنائي، تسجل الدفعة ولا يعاد فتح الطلب تلقائيًا ويُنشأ نشاط يتطلب مراجعة الإدارة.
-- المفاتيح والإعدادات تأتي من متغيرات السيرفر `XPAY_SECRET_KEY` و`XPAY_WEBHOOK_SECRET` و`XPAY_APP_URL` ولا تُحفظ في Git. إعداد وتشغيل Webhook في Test وLive يتم من لوحة XPay؛ لكل وضع Endpoint وSigning Secret مستقلان.
+- تُقرأ قيم `XPAY_SECRET_KEY` و`XPAY_WEBHOOK_SECRET` و`XPAY_APP_URL` أولًا من الملف المحلي المستبعد من Git `config/xpay.local.php`، وتعود كل قيمة فارغة إلى متغير السيرفر المطابق كخيار احتياطي. يوجد مثال آمن في `config/xpay.local.example.php`، ويحجب Apache مجلد `config` عبر `config/.htaccess`. لا تُحفظ القيم الحقيقية في Git، ولكل وضع Test وLive مفتاح وWebhook Signing Secret مستقلان.
 - ترحيل البنية هو `migrations/2026_09_17_xpay_hosted_checkout.sql`. يضيف جداول `xpay_checkout_sessions` و`xpay_webhook_events` ويوسع `payments` مع الحفاظ على السجلات اليدوية القديمة.
 - التحقق المحلي شمل PHP lint، واختبار توقيع Webhook والتأكيد الصحيح ومنع التكرار ورفض اختلاف المبلغ مع استعادة أعداد الجداول إلى خط الأساس. لم يُنفذ دفع حقيقي أو Test Checkout خارجي لعدم وجود مفاتيح XPay وWebhook عام في بيئة التطوير.
 

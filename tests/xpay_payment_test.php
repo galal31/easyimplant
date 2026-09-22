@@ -1,6 +1,7 @@
 <?php
 
 require_once __DIR__ . '/../includes/db_connect.php';
+define('XPAY_LOCAL_CONFIG_PATH', __DIR__ . '/xpay.local.test.php');
 require_once __DIR__ . '/../includes/xpay.php';
 
 function assertXpayTest(bool $condition, string $message): void
@@ -59,13 +60,25 @@ $clinicId = null;
 $requestIds = [];
 $sessionIds = [];
 $eventIds = [];
+$previousSecretKey = getenv('XPAY_SECRET_KEY');
 $previousWebhookSecret = getenv('XPAY_WEBHOOK_SECRET');
 $previousAppUrl = getenv('XPAY_APP_URL');
+$testSecretKey = 'sk_test_' . bin2hex(random_bytes(16));
 $testWebhookSecret = 'whsec_test_' . bin2hex(random_bytes(16));
+putenv('XPAY_SECRET_KEY=' . $testSecretKey);
 putenv('XPAY_WEBHOOK_SECRET=' . $testWebhookSecret);
 putenv('XPAY_APP_URL=http://127.0.0.1/easyimplant');
 
 try {
+    $resolvedConfig = xpayResolveConfig([
+        'XPAY_SECRET_KEY' => 'sk_test_local_value',
+        'XPAY_WEBHOOK_SECRET' => '',
+        'XPAY_APP_URL' => 'http://localhost/easyimplant/',
+    ]);
+    assertXpayTest($resolvedConfig['secret_key'] === 'sk_test_local_value', 'Local XPay values must take priority over environment variables.');
+    assertXpayTest($resolvedConfig['webhook_secret'] === $testWebhookSecret, 'Empty local XPay values must fall back to environment variables.');
+    assertXpayTest($resolvedConfig['app_url'] === 'http://localhost/easyimplant', 'The resolved XPay app URL must not retain a trailing slash.');
+
     $userStmt = $pdo->prepare("INSERT INTO users
         (full_name, clinic_name, email, password, phone, country, role, status)
         VALUES ('XPay Test Clinic', 'XPay Test Clinic', :email, :password, '201000000000', 'egypt', 'clinic', 'approved')");
@@ -181,6 +194,11 @@ try {
     }
     if ($clinicId) {
         $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$clinicId]);
+    }
+    if ($previousSecretKey === false) {
+        putenv('XPAY_SECRET_KEY');
+    } else {
+        putenv('XPAY_SECRET_KEY=' . $previousSecretKey);
     }
     if ($previousWebhookSecret === false) {
         putenv('XPAY_WEBHOOK_SECRET');

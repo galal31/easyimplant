@@ -5,19 +5,47 @@ require_once __DIR__ . '/request_workflow.php';
 const XPAY_API_BASE_URL = 'https://api.xpay.app';
 const XPAY_WEBHOOK_TOLERANCE_SECONDS = 300;
 
+function xpayResolveConfig(array $localConfig): array
+{
+    $value = static function (string $key) use ($localConfig): string {
+        $localValue = trim((string) ($localConfig[$key] ?? ''));
+
+        return $localValue !== ''
+            ? $localValue
+            : trim((string) (getenv($key) ?: ''));
+    };
+
+    return [
+        'secret_key' => $value('XPAY_SECRET_KEY'),
+        'webhook_secret' => $value('XPAY_WEBHOOK_SECRET'),
+        'app_url' => rtrim($value('XPAY_APP_URL'), '/'),
+    ];
+}
+
 function xpayConfig(): array
 {
-    return [
-        'secret_key' => trim((string) (getenv('XPAY_SECRET_KEY') ?: '')),
-        'webhook_secret' => trim((string) (getenv('XPAY_WEBHOOK_SECRET') ?: '')),
-        'app_url' => rtrim(trim((string) (getenv('XPAY_APP_URL') ?: '')), '/'),
-    ];
+    $localConfigPath = defined('XPAY_LOCAL_CONFIG_PATH')
+        ? (string) constant('XPAY_LOCAL_CONFIG_PATH')
+        : dirname(__DIR__) . '/config/xpay.local.php';
+    $localConfig = [];
+
+    if (is_file($localConfigPath)) {
+        $loadedConfig = require $localConfigPath;
+        if (is_array($loadedConfig)) {
+            $localConfig = $loadedConfig;
+        }
+    }
+
+    return xpayResolveConfig($localConfig);
 }
 
 function xpayIsConfigured(): bool
 {
     $config = xpayConfig();
     if ($config['secret_key'] === '' || $config['webhook_secret'] === '' || $config['app_url'] === '') {
+        return false;
+    }
+    if (!str_starts_with($config['secret_key'], 'sk_test_') && !str_starts_with($config['secret_key'], 'sk_live_')) {
         return false;
     }
 

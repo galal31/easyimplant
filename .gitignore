@@ -1,6 +1,7 @@
 # Local credentials and environment-specific configuration
 /includes/database_config.php
 /includes/r2_config.php
+/config/xpay.local.php
 .env
 .env.*
 !.env.example
@@ -29,4 +30,3 @@
 .DS_Store
 Thumbs.db
 desktop.ini
-

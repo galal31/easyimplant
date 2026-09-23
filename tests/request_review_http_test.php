@@ -151,6 +151,7 @@ try {
         (package_id, file_path, original_name, content_type, file_size)
         VALUES (:package, :path, :name, 'application/pdf', 128)");
     $packageIds = [];
+    $reviewFileIds = [];
     foreach (['First round', 'Latest round'] as $index => $summary) {
         $packageStmt->execute([':request' => $reviewRequestId, ':admin' => $adminId, ':summary' => $summary]);
         $packageId = (int) $pdo->lastInsertId();
@@ -160,6 +161,7 @@ try {
             ':path' => "tests/http-review-$suffix-$index.pdf",
             ':name' => "review-$index.pdf",
         ]);
+        $reviewFileIds[] = (int) $pdo->lastInsertId();
     }
     $paymentStmt = $pdo->prepare("INSERT INTO payments (request_id, user_id, receipt_file_path, amount, status)
         VALUES (:request, :user, :path, 1.00, 'pending_verification')");
@@ -168,8 +170,32 @@ try {
 
     $clinicPage = localHttp('GET', "view_request.php?id=$reviewRequestId", $clinicSession);
     assertHttpTest($clinicPage['status'] === 200 && str_contains($clinicPage['body'], 'Latest review') && str_contains($clinicPage['body'], 'approveReviewButton'), 'Clinic request page must render the latest review and approval action.');
+    assertHttpTest(
+        str_contains($clinicPage['body'], 'api/open_review_file.php?file_id=' . $reviewFileIds[1]),
+        'Clinic review links must request a fresh file URL when opened.'
+    );
     assertHttpTest(!str_contains($clinicPage['body'], '> Upload Receipt<'), 'Clinic Surgical Guide page must not render a manual receipt action.');
     assertRenderedScriptsParse($clinicPage['body'], 'Clinic request page');
+
+    $otherFileOpen = localHttp('GET', 'api/open_review_file?file_id=' . $reviewFileIds[1], $otherSession);
+    assertHttpTest($otherFileOpen['status'] === 404, 'Another clinic must not open a review file from this request.');
+
+    $openContext = stream_context_create(['http' => [
+        'method' => 'GET',
+        'ignore_errors' => true,
+        'max_redirects' => 0,
+        'header' => "Cookie: PHPSESSID=$clinicSession",
+    ]]);
+    file_get_contents('http://127.0.0.1/easyimplant/api/open_review_file?file_id=' . $reviewFileIds[1], false, $openContext);
+    $openHeaders = $http_response_header ?? [];
+    $openStatus = finalHttpStatus($openHeaders);
+    $openLocation = '';
+    foreach ($openHeaders as $header) {
+        if (stripos($header, 'Location: ') === 0) $openLocation = trim(substr($header, 10));
+    }
+    assertHttpTest($openStatus === 302, 'The owning clinic must receive a fresh review-file redirect.');
+    assertHttpTest(str_starts_with($openLocation, 'https://') && str_contains($openLocation, 'X-Amz-Signature='), 'The review-file redirect must contain a signed HTTPS URL.');
+
     $adminPage = localHttp('GET', "admin/admin_view_request.php?id=$reviewRequestId", $adminSession);
     assertHttpTest($adminPage['status'] === 200 && str_contains($adminPage['body'], 'Send review to clinic') && str_contains($adminPage['body'], 'Request conversation'), 'Admin request page must render review-package and chat controls.');
     assertHttpTest(!str_contains($adminPage['body'], 'Approve &amp; Request Payment') && !str_contains($adminPage['body'], 'Approve & Request Payment'), 'Admin page must not render the old direct-payment action.');

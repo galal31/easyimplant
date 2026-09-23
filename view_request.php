@@ -643,11 +643,12 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                                             <?php
                                                                 $reviewFileName = uploadedFileDisplayName($file['original_name'], $file['file_path']);
                                                                 $reviewFileUrl  = getPresignedUrl($s3Client, $bucketName, $file['file_path']);
+                                                                $reviewOpenUrl = 'api/open_review_file.php?file_id=' . (int) $file['id'];
                                                                 $reviewContentType = strtolower((string) $file['content_type']);
                                                             ?>
                                                             <div class="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                                                                 <?php if (str_starts_with($reviewContentType, 'image/')): ?>
-                                                                    <a href="<?= htmlspecialchars($reviewFileUrl) ?>" target="_blank" rel="noopener"><img src="<?= htmlspecialchars($reviewFileUrl) ?>" alt="<?= htmlspecialchars($reviewFileName) ?>" class="h-44 w-full bg-white object-contain" loading="lazy"></a>
+                                                                    <a href="<?= htmlspecialchars($reviewOpenUrl) ?>" target="_blank" rel="noopener"><img src="<?= htmlspecialchars($reviewFileUrl) ?>" alt="<?= htmlspecialchars($reviewFileName) ?>" class="h-44 w-full bg-white object-contain" loading="lazy"></a>
                                                                 <?php elseif (str_starts_with($reviewContentType, 'video/')): ?>
                                                                     <video controls preload="metadata" class="h-44 w-full bg-slate-950 object-contain"><source src="<?= htmlspecialchars($reviewFileUrl) ?>" type="<?= htmlspecialchars($reviewContentType) ?>">Your browser cannot preview this video.</video>
                                                                 <?php endif; ?>
@@ -657,7 +658,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                                                         <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($reviewFileName) ?>"><?= htmlspecialchars($reviewFileName) ?></span>
                                                                         <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'], $reviewFileName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'])) ?></span>
                                                                     </span>
-                                                                    <a href="<?= htmlspecialchars($reviewFileUrl) ?>" target="_blank" rel="noopener" class="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#1d5f8c] shadow-sm hover:bg-blue-50">Open</a>
+                                                                    <a href="<?= htmlspecialchars($reviewOpenUrl) ?>" target="_blank" rel="noopener" class="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#1d5f8c] shadow-sm hover:bg-blue-50">Open</a>
                                                                 </div>
                                                             </div>
                                                         <?php endforeach; ?>

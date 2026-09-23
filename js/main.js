@@ -1,217 +1,242 @@
-const doctors = [
-            {
-                name_en: 'Dr. Ahmed Hany',
-                name_ar: 'د. أحمد هاني',
-                specialty_en: 'Implant Surgeon',
-                specialty_ar: 'جراح زراعة أسنان',
-                image: 'images/doctors/hany.jpeg',
-                experience: '+10',
-                cases: '+850',
-                rating: '4.9'
-            },
-            {
-                name_en: 'Dr. Ahmed Arafa',
-                name_ar: 'د. أحمد عرفة',
-                specialty_en: 'Oral Surgery Consultant',
-                specialty_ar: 'استشاري جراحة الفم',
-                image: 'images/doctors/arafa.jpeg',
-                experience: '+15',
-                cases: '+1200',
-                rating: '4.8'
-            },
-            {
-                name_en: 'Dr. Sara Nabil',
-                name_ar: 'د. سارة نبيل',
-                specialty_en: 'Guided Surgery Specialist',
-                specialty_ar: 'أخصائية الجراحة الموجهة',
-                image: 'https://images.unsplash.com/photo-1598256989800-fe5f95da9787?auto=format&fit=crop&w=800&q=80',
-                experience: '+8',
-                cases: '+400',
-                rating: '5.0'
-            },
-            {
-                name_en: 'Dr. Karim Essam',
-                name_ar: 'د. كريم عصام',
-                specialty_en: 'Implantology Consultant',
-                specialty_ar: 'استشاري زراعة الأسنان',
-                image: 'https://images.unsplash.com/photo-1614608682850-e0d6ed316d47?auto=format&fit=crop&w=800&q=80',
-                experience: '+12',
-                cases: '+950',
-                rating: '4.9'
+let currentLang = 'en';
+const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+function applyLanguage(lang) {
+    if (!translations || !translations[lang]) return;
+
+    currentLang = lang;
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+    document.querySelectorAll('[data-i18n]').forEach((element) => {
+        const key = element.getAttribute('data-i18n');
+        if (Object.prototype.hasOwnProperty.call(translations[lang], key)) {
+            element.textContent = translations[lang][key];
+        }
+    });
+
+    document.querySelectorAll('[data-i18n-aria-label]').forEach((element) => {
+        const key = element.getAttribute('data-i18n-aria-label');
+        if (Object.prototype.hasOwnProperty.call(translations[lang], key)) {
+            element.setAttribute('aria-label', translations[lang][key]);
+        }
+    });
+
+    document.querySelectorAll('.lang-btn').forEach((button) => {
+        const isActive = button.dataset.lang === lang;
+        button.classList.toggle('active', isActive);
+        button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+}
+
+function setupLanguageButtons() {
+    document.querySelectorAll('.lang-btn').forEach((button) => {
+        button.addEventListener('click', () => applyLanguage(button.dataset.lang));
+    });
+}
+
+function setupMenu() {
+    const toggle = document.getElementById('menu-toggle');
+    const menu = document.getElementById('mobile-menu');
+    const icon = document.getElementById('menu-icon');
+    if (!toggle || !menu || !icon) return;
+
+    const setOpen = (open) => {
+        menu.classList.toggle('hidden', !open);
+        toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+        icon.classList.toggle('fa-bars', !open);
+        icon.classList.toggle('fa-xmark', open);
+    };
+
+    toggle.addEventListener('click', () => {
+        setOpen(menu.classList.contains('hidden'));
+    });
+
+    menu.querySelectorAll('a').forEach((link) => {
+        link.addEventListener('click', () => setOpen(false));
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !menu.classList.contains('hidden')) {
+            setOpen(false);
+            toggle.focus();
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        if (menu.classList.contains('hidden')) return;
+        if (!menu.contains(event.target) && !toggle.contains(event.target)) setOpen(false);
+    });
+
+    window.addEventListener('resize', () => {
+        if (window.innerWidth >= 1024) setOpen(false);
+    }, { passive: true });
+}
+
+function setupFaq() {
+    document.querySelectorAll('.faq-toggle').forEach((button) => {
+        button.addEventListener('click', () => {
+            const item = button.closest('.faq-item');
+            if (!item) return;
+
+            const isOpen = item.classList.toggle('faq-open');
+            button.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        });
+    });
+}
+
+function setupReveal() {
+    const reveals = document.querySelectorAll('.reveal:not(.active)');
+    if (!reveals.length) return;
+
+    if (motionQuery.matches || !('IntersectionObserver' in window)) {
+        reveals.forEach((item) => item.classList.add('active'));
+        return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+                entry.target.classList.add('active');
+                observer.unobserve(entry.target);
             }
-        ];
+        });
+    }, { threshold: 0.12, rootMargin: '0px 0px -5% 0px' });
 
-        
+    reveals.forEach((item) => observer.observe(item));
+}
 
-        let currentLang = 'en';
+function setupScrollTop() {
+    const button = document.getElementById('scroll-top');
+    if (!button) return;
 
-        function applyLanguage(lang) {
-            currentLang = lang;
-            document.documentElement.lang = lang;
-            document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+    const update = () => {
+        button.classList.toggle('show', window.scrollY > 520);
+    };
 
-            document.querySelectorAll('[data-i18n]').forEach((element) => {
-                const key = element.getAttribute('data-i18n');
-                if (translations[lang][key]) {
-                    element.textContent = translations[lang][key];
-                }
-            });
+    window.addEventListener('scroll', update, { passive: true });
+    update();
 
-            document.querySelectorAll('.lang-btn').forEach((btn) => {
-                const isActive = btn.dataset.lang === lang;
-                btn.classList.toggle('bg-brand-blue', isActive);
-                btn.classList.toggle('text-white', isActive);
-                btn.classList.toggle('text-brand-text', !isActive);
-                btn.classList.toggle('hover:text-brand-blue', !isActive);
-            });
+    button.addEventListener('click', () => {
+        window.scrollTo({ top: 0, behavior: motionQuery.matches ? 'auto' : 'smooth' });
+    });
+}
 
-            renderDoctors();
+function setupActiveNav() {
+    const links = [...document.querySelectorAll('.nav-link, .mobile-nav-link')];
+    const sections = [...document.querySelectorAll('main section[id]')];
+    if (!links.length || !sections.length) return;
+
+    let ticking = false;
+    const activate = () => {
+        const marker = window.scrollY + 150;
+        let currentId = '';
+
+        sections.forEach((section) => {
+            if (marker >= section.offsetTop) currentId = section.id;
+        });
+
+        links.forEach((link) => {
+            const active = link.getAttribute('href') === `#${currentId}`;
+            link.classList.toggle('active-link', active);
+            if (active) link.setAttribute('aria-current', 'page');
+            else link.removeAttribute('aria-current');
+        });
+
+        ticking = false;
+    };
+
+    window.addEventListener('scroll', () => {
+        if (!ticking) {
+            ticking = true;
+            window.requestAnimationFrame(activate);
+        }
+    }, { passive: true });
+
+    window.addEventListener('resize', activate, { passive: true });
+    activate();
+}
+
+function setupHeaderScrollState() {
+    const header = document.getElementById('main-header');
+    if (!header) return;
+
+    const update = () => header.classList.toggle('is-scrolled', window.scrollY > 24);
+    window.addEventListener('scroll', update, { passive: true });
+    update();
+}
+
+function setupHeroMotion() {
+    const video = document.getElementById('hero-video');
+    if (!video) return;
+
+    const update = () => {
+        if (motionQuery.matches) {
+            video.pause();
+            return;
         }
 
-        function renderDoctors() {
-            const container = document.getElementById('doctors-container');
-            if (!container) return;
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {});
+        }
+    };
 
-            container.innerHTML = doctors.map((doctor) => `
-                <article class="reveal overflow-hidden rounded-4xl border border-slate-200 bg-white shadow-card group">
-                    <div class="relative aspect-[4/3] overflow-hidden bg-slate-100">
-                        <img src="${doctor.image}" alt="${currentLang === 'ar' ? doctor.name_ar : doctor.name_en}"
-                            class="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
-                        <div class="absolute inset-0 bg-gradient-to-t from-brand-dark/70 via-brand-dark/10 to-transparent opacity-100 transition-opacity duration-500 group-hover:opacity-80"></div>
-                    </div>
-                    <div class="p-6">
-                        <div class="mb-4 inline-flex items-center rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-brand-blue">
-                            ${translations[currentLang].doctor_badge}
-                        </div>
-                        <h3 class="text-xl font-bold text-brand-navy">${currentLang === 'ar' ? doctor.name_ar : doctor.name_en}</h3>
-                        <p class="mt-2 text-sm font-medium text-brand-text">${currentLang === 'ar' ? doctor.specialty_ar : doctor.specialty_en}</p>
-                        
-                        <div class="mt-6 grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 pt-5 rtl:divide-x-reverse">
-                            <div class="text-center px-1">
-                                <span class="block text-lg font-extrabold text-brand-navy">${doctor.experience}</span>
-                                <span class="block mt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-text">
-                                    ${currentLang === 'ar' ? 'سنوات خبرة' : 'Years Exp.'}
-                                </span>
-                            </div>
-                            <div class="text-center px-1">
-                                <span class="block text-lg font-extrabold text-brand-navy">${doctor.cases}</span>
-                                <span class="block mt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-text">
-                                    ${currentLang === 'ar' ? 'حالة' : 'Cases'}
-                                </span>
-                            </div>
-                            <div class="text-center px-1">
-                                <span class="block text-lg font-extrabold text-brand-navy flex items-center justify-center gap-1">
-                                    ${doctor.rating}
-                                    <i class="fa-solid fa-star text-amber-400 text-[12px] mb-0.5"></i>
-                                </span>
-                                <span class="block mt-1 text-[11px] font-semibold uppercase tracking-wider text-brand-text">
-                                    ${currentLang === 'ar' ? 'تقييم' : 'Rating'}
-                                </span>
-                            </div>
-                        </div>
+    update();
+    if (typeof motionQuery.addEventListener === 'function') {
+        motionQuery.addEventListener('change', update);
+    }
+}
 
-                    </div>
-                </article>
-            `).join('');
+function setupJourneyProgress() {
+    const journey = document.getElementById('case-journey-map');
+    const path = document.getElementById('case-journey-path');
+    if (!journey || !path) return;
 
-            observeReveal();
+    path.style.strokeDasharray = '1';
+
+    let ticking = false;
+    const update = () => {
+        if (motionQuery.matches) {
+            path.style.strokeDashoffset = '0';
+            ticking = false;
+            return;
         }
 
-        function observeReveal() {
-            const reveals = document.querySelectorAll('.reveal:not(.active)');
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach((entry) => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('active');
-                        observer.unobserve(entry.target);
-                    }
-                });
-            }, {
-                threshold: 0.12
-            });
+        const rect = journey.getBoundingClientRect();
+        const journeyTop = window.scrollY + rect.top;
+        const journeyHeight = journey.offsetHeight;
+        const viewportLead = window.innerHeight * 0.42;
+        const traveled = window.scrollY + viewportLead - journeyTop;
+        const usable = Math.max(journeyHeight - window.innerHeight * 0.28, 1);
+        const progress = Math.min(Math.max(traveled / usable, 0), 1);
 
-            reveals.forEach((item) => observer.observe(item));
+        path.style.strokeDashoffset = String(1 - progress);
+        ticking = false;
+    };
+
+    const requestUpdate = () => {
+        if (!ticking) {
+            ticking = true;
+            window.requestAnimationFrame(update);
         }
+    };
 
-        function setupMenu() {
-            const toggle = document.getElementById('menu-toggle');
-            const menu = document.getElementById('mobile-menu');
-            if (!toggle || !menu) return;
+    window.addEventListener('scroll', requestUpdate, { passive: true });
+    window.addEventListener('resize', requestUpdate, { passive: true });
+    if (typeof motionQuery.addEventListener === 'function') {
+        motionQuery.addEventListener('change', requestUpdate);
+    }
+    update();
+}
 
-            toggle.addEventListener('click', () => {
-                menu.classList.toggle('hidden');
-                const expanded = !menu.classList.contains('hidden');
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                toggle.innerHTML = expanded
-                    ? '<i class="fa-solid fa-xmark text-lg"></i>'
-                    : '<i class="fa-solid fa-bars text-lg"></i>';
-            });
-
-            menu.querySelectorAll('a').forEach((link) => {
-                link.addEventListener('click', () => {
-                    menu.classList.add('hidden');
-                    toggle.setAttribute('aria-expanded', 'false');
-                    toggle.innerHTML = '<i class="fa-solid fa-bars text-lg"></i>';
-                });
-            });
-        }
-
-        function setupLanguageButtons() {
-            document.querySelectorAll('.lang-btn').forEach((btn) => {
-                btn.addEventListener('click', () => applyLanguage(btn.dataset.lang));
-            });
-        }
-
-        function setupFaq() {
-            document.querySelectorAll('.faq-toggle').forEach((button) => {
-                button.addEventListener('click', () => {
-                    const item = button.closest('.faq-item');
-                    item.classList.toggle('faq-open');
-                });
-            });
-        }
-
-        function setupScrollTop() {
-            const button = document.getElementById('scroll-top');
-            if (!button) return;
-
-            window.addEventListener('scroll', () => {
-                if (window.scrollY > 500) {
-                    button.classList.add('show');
-                } else {
-                    button.classList.remove('show');
-                }
-            });
-
-            button.addEventListener('click', () => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
-        }
-
-        function setupActiveNav() {
-            const links = document.querySelectorAll('a[href^="#"]');
-            const sections = [...document.querySelectorAll('main section[id]')];
-
-            const activate = () => {
-                let currentId = '';
-                sections.forEach((section) => {
-                    const sectionTop = section.offsetTop - 120;
-                    if (window.scrollY >= sectionTop) currentId = section.getAttribute('id');
-                });
-
-                links.forEach((link) => {
-                    link.classList.toggle('active-link', link.getAttribute('href') === `#${currentId}`);
-                });
-            };
-
-            window.addEventListener('scroll', activate);
-            activate();
-        }
-
-        setupMenu();
-        setupLanguageButtons();
-        setupFaq();
-        setupScrollTop();
-        setupActiveNav();
-        observeReveal();
-        applyLanguage('en');
+setupMenu();
+setupLanguageButtons();
+setupFaq();
+setupScrollTop();
+setupActiveNav();
+setupHeaderScrollState();
+setupHeroMotion();
+setupJourneyProgress();
+setupReveal();
+applyLanguage('en');

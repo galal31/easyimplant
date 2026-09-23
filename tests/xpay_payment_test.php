@@ -100,6 +100,7 @@ try {
         149900,
         str_repeat('a', 64)
     );
+    assertXpayTest($payload['submitType'] === 'PAY', 'Checkout submitType must use the uppercase XPay API enum.');
     assertXpayTest($payload['lineItems'][0]['priceData']['unitAmount'] === 149900, 'Checkout payload must use the server-side amount in minor units.');
     assertXpayTest($payload['metadata']['request_id'] === (string) $requestId, 'Checkout payload must carry the request ID in metadata.');
     assertXpayTest(str_contains($payload['afterCompletion']['redirect']['url'], '{CHECKOUT_SESSION_ID}'), 'Checkout return URL must include the XPay session template.');

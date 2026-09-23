@@ -35,6 +35,7 @@ Easy Implant منصة لتنظيم التعامل بين عيادات الأسن
 
 - الربط يستخدم XPay Hosted Checkout لطلبات `surgical_guide` الموجودة في `pending_payment` فقط. مسار طلب الجرّاح والإيصالات اليدوية القديمة لم يتغيرا.
 - `api/create_xpay_checkout.php` يتحقق من جلسة العيادة وملكيتها للطلب وCSRF وحالة الطلب، ويأخذ الإجمالي المحفوظ في `surgical_guide_details.total_price` بالجنيه ثم ينشئ جلسة XPay بمفتاح Idempotency محفوظ. الجلسة الحالية تُعاد بدل إنشاء جلسات متكررة، وتنتهي بعد 30 دقيقة.
+- قيمة `submitType` المرسلة إلى XPay هي enum حساسة لحالة الأحرف وتُرسل بالقيمة `PAY` كما تتطلب الواجهة؛ إرسال `pay` يؤدي إلى `HTTP 400 (parameter_invalid)` قبل إنشاء جلسة الدفع.
 - `api/xpay_webhook.php` يقرأ الجسم الخام ويتحقق من توقيع `XPay-Signature` باستخدام HMAC-SHA256 ونافذة خمس دقائق، ويمنع تكرار الأحداث باستخدام `event.id`. لا يعتمد نجاح الدفع على صفحة الرجوع.
 - لا تُقبل الدفعة إلا عند `paymentStatus = paid` في `checkout.session.completed` أو `checkout.session.async_payment_succeeded`، وبعد مطابقة Session ID والمبلغ والعملة ووضع Test/Live وMetadata الخاصة بالطلب والعيادة مع السجل المحلي.
 - عند التأكيد الصحيح يُنشأ سجل `payments` مع `payment_source = xpay` وحالته `approved` ومعرّفي Checkout Session وPayment Intent، ثم ينتقل الطلب داخل معاملة واحدة من `pending_payment` إلى `in_progress` عبر مصدر `gateway_payment_confirmation`.

@@ -116,7 +116,7 @@ function xpayCreateCheckoutPayload(array $request, array $clinic, int $amountMin
     return [
         'mode' => 'payment',
         'uiMode' => 'hosted',
-        'submitType' => 'pay',
+        'submitType' => 'PAY',
         'afterCompletion' => [
             'type' => 'redirect',
             'redirect' => ['url' => xpayBuildReturnUrl($returnToken)],

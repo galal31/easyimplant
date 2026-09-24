@@ -60,6 +60,35 @@ $multipleRewards = calculateSurgicalGuidePrice(
 );
 assertPricingValue(2, $multipleRewards['free_implants'], 'One request may cross more than one configured reward boundary.');
 
+$protectedRule = calculateClinicFreeImplantAllocation(1, 3, 5, 7);
+assertPricingValue(0, $protectedRule['free_implants'], 'Changing the admin default must not replace the clinic protected rule mid-cycle.');
+assertPricingValue(4, $protectedRule['progress_after'], 'The clinic must continue its protected cycle without a reset.');
+assertPricingValue(5, $protectedRule['active_free_implant_every_after'], 'The old rule must remain active until its reward boundary is reached.');
+
+$crossToNewRule = calculateClinicFreeImplantAllocation(3, 3, 5, 7);
+assertPricingValue(1, $crossToNewRule['free_implants'], 'The request must earn the reward that closes the protected rule.');
+assertPricingValue(1, $crossToNewRule['progress_after'], 'Remaining implants must continue in the new cycle.');
+assertPricingValue(7, $crossToNewRule['active_free_implant_every_after'], 'The latest admin default must become active after closing the old cycle.');
+assertPricingValue(2, count($crossToNewRule['rule_path']), 'The snapshot must record both rules used by a crossing request.');
+
+$multipleProtectedRewards = calculateClinicFreeImplantAllocation(16, 3, 5, 7);
+assertPricingValue(3, $multipleProtectedRewards['free_implants'], 'One request may close the protected cycle and multiple new cycles.');
+assertPricingValue(3, count($multipleProtectedRewards['rule_path']), 'Every crossed reward segment must be preserved in the snapshot.');
+
+$protectedPrice = calculateSurgicalGuidePrice(
+    guideCounts(['upper_anterior' => 3]),
+    'clinic_print',
+    3,
+    array_merge(pricingForRule(7), [
+        'clinic_free_implant_every' => 5,
+        'clinic_free_progress' => 3,
+        'next_free_implant_every' => 7,
+    ])
+);
+assertPricingValue(1, $protectedPrice['free_implants'], 'Server pricing must use the clinic protected rule before the new default.');
+assertPricingValue(1600.0, $protectedPrice['total_price'], 'The saved discount must match the protected-rule allocation.');
+assertPricingValue(1, $protectedPrice['free_progress_after'], 'Server pricing must save the new-cycle remainder.');
+
 $invalidSettingsRejected = false;
 try {
     calculateSurgicalGuidePrice(guideCounts(['upper_anterior' => 1]), 'clinic_print', 0, []);
@@ -69,4 +98,3 @@ try {
 assertPricingValue(true, $invalidSettingsRejected, 'Missing runtime pricing settings must not silently fall back to 12.');
 
 echo "Surgical guide pricing tests passed.\n";
-

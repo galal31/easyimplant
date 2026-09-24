@@ -258,26 +258,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             throw new RuntimeException('Clinic account not found.');
         }
 
-        $pdo->query("SELECT setting_key
-            FROM surgical_guide_pricing_settings
-            WHERE setting_key IN (
-                'clinic_print_first_implant_price',
-                'admin_print_first_implant_price',
-                'additional_implant_price',
-                'free_implant_every',
-                'active_free_rule_cycle_id'
-            )
-            FOR UPDATE")->fetchAll();
+        $pdo->query("SELECT setting_key FROM surgical_guide_pricing_settings FOR UPDATE")->fetchAll();
 
         $pricing_settings = getSurgicalGuidePricing($pdo);
+        $pricing_settings = getClinicSurgicalGuideQuote($pdo, (int) $user_id, $pricing_settings, true);
         if (!hash_equals($pricing_settings['version'], $pricing_version)) {
             $pdo->rollBack();
             cleanupUnstoredGuideUploads($s3Client, $bucketName, (int) $user_id, [$cbct_file_path, $stl_file_path]);
             cleanupUnstoredGuideKitUploads($s3Client, $bucketName, (int) $user_id, $guided_kit_upload_keys);
             guideRequestError('Pricing changed while this request was being submitted. Please refresh and review the new price.', 409);
         }
-        $previous_implants = getClinicCompletedGuideImplants($pdo, (int) $user_id, (int) $pricing_settings['free_rule_cycle_id']);
-        $price_summary = calculateSurgicalGuidePrice($implant_counts, $delivery_method, $previous_implants, $pricing_settings);
+        $price_summary = calculateSurgicalGuidePrice(
+            $implant_counts,
+            $delivery_method,
+            (int) $pricing_settings['clinic_free_progress'],
+            $pricing_settings
+        );
 
         if ($guided_kit_source === 'rental') {
             $guided_kit_option = getSurgicalGuideKitOptionById($pdo, (int) $guided_kit_option_id, true);
@@ -330,6 +326,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 paid_implants,
                 free_rule_cycle_id,
                 free_implant_every_used,
+                free_progress_before,
+                free_progress_after,
+                free_implant_every_after,
+                free_state_version_used,
+                free_rule_path,
                 first_implant_price_used,
                 additional_implant_price_used,
                 upper_subtotal,
@@ -371,6 +372,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 :paid_implants,
                 :free_rule_cycle_id,
                 :free_implant_every_used,
+                :free_progress_before,
+                :free_progress_after,
+                :free_implant_every_after,
+                :free_state_version_used,
+                :free_rule_path,
                 :first_implant_price_used,
                 :additional_implant_price_used,
                 :upper_subtotal,
@@ -412,8 +418,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':total_implants' => $price_summary['total_implants'],
             ':free_implants' => $price_summary['free_implants'],
             ':paid_implants' => $price_summary['paid_implants'],
-            ':free_rule_cycle_id' => (int) $pricing_settings['free_rule_cycle_id'],
-            ':free_implant_every_used' => (int) $pricing_settings['free_implant_every'],
+            ':free_rule_cycle_id' => null,
+            ':free_implant_every_used' => (int) $price_summary['free_implant_every_before'],
+            ':free_progress_before' => (int) $price_summary['free_progress_before'],
+            ':free_progress_after' => (int) $price_summary['free_progress_after'],
+            ':free_implant_every_after' => (int) $price_summary['free_implant_every_after'],
+            ':free_state_version_used' => (int) $pricing_settings['clinic_free_state_version'],
+            ':free_rule_path' => json_encode($price_summary['free_rule_path'], JSON_THROW_ON_ERROR),
             ':first_implant_price_used' => $price_summary['first_implant_price_used'],
             ':additional_implant_price_used' => $price_summary['additional_implant_price_used'],
             ':upper_subtotal' => $price_summary['upper_subtotal'],
@@ -423,6 +434,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ':total_price' => $request_total_price,
             ':notes'           => $notes
         ]);
+
+        reserveClinicFreeImplantProgress(
+            $pdo,
+            (int) $user_id,
+            (int) $request_id,
+            [
+                'state_version' => (int) $pricing_settings['clinic_free_state_version'],
+            ],
+            $price_summary
+        );
 
         if (!empty($guided_kit_uploads_verified)) {
             $stmtKitFile = $pdo->prepare("INSERT INTO surgical_guide_kit_files

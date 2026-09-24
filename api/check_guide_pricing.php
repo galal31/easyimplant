@@ -105,6 +105,7 @@ try {
 
     $diagnosticStage = 'load_pricing_and_cycle';
     $pricing = getSurgicalGuidePricing($pdo);
+    $pricing = getClinicSurgicalGuideQuote($pdo, (int) $_SESSION['user_id'], $pricing);
     $loadedVersion = trim((string) ($_POST['pricing_version'] ?? ''));
 
     if ($loadedVersion === '' || !hash_equals($pricing['version'], $loadedVersion)) {
@@ -120,8 +121,11 @@ try {
     echo json_encode([
         'success' => true,
         'pricing_version' => $pricing['version'],
-        'free_implant_every' => $pricing['free_implant_every'],
-        'free_rule_cycle_id' => $pricing['free_rule_cycle_id'],
+        'free_implant_every' => $pricing['clinic_free_implant_every'],
+        'free_progress' => $pricing['clinic_free_progress'],
+        'reserved_implants' => $pricing['clinic_reserved_implants'],
+        'next_free_implant_every' => $pricing['next_free_implant_every'],
+        'free_state_version' => $pricing['clinic_free_state_version'],
     ]);
 } catch (Throwable $e) {
     error_log('Guide Pricing Check Error [' . $diagnosticStage . ']: ' . $e->getMessage());
@@ -130,7 +134,7 @@ try {
     $safePricingErrors = [
         'Surgical guide pricing schema is out of date. Run the pricing migrations.',
         'Surgical guide pricing settings are incomplete.',
-        'The active free-implant cycle does not match the current pricing rule.',
+        'The clinic free-implant progress is invalid.',
     ];
 
     $response = [

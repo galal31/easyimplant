@@ -9,7 +9,7 @@ if (!$clinicId) die('Invalid clinic ID.');
 
 try {
     $account = getClinicAccount($pdo, $clinicId);
-} catch (PDOException $e) {
+} catch (Throwable $e) {
     error_log('Clinic Account Detail Error: ' . $e->getMessage());
     $account = null;
 }
@@ -19,14 +19,17 @@ $clinic = $account['clinic'];
 $summary = $account['summary'];
 $rows = $account['rows'];
 $adjustments = $account['adjustments'] ?? [];
-$freeHistory = $account['ledger'] ?? [];
+$freeHistory = $account['reward_ledger'] ?? [];
+$rewardState = $account['reward_state'] ?? [];
+$nextFreeImplantEvery = (int) ($account['next_free_implant_every'] ?? 0);
 $implantUsage = getImplantTypeUsage($pdo, (int) $clinic['id']);
 $completedImplants = (int) $summary['eligible_implants'];
-$completedFreeImplants = array_sum(array_map(static fn(array $entry): int => (int) $entry['free_implants'], $freeHistory));
+$confirmedRewardRows = array_values(array_filter($freeHistory, static fn(array $entry): bool => ($entry['status'] ?? '') === 'confirmed'));
+$completedFreeImplants = array_sum(array_map(static fn(array $entry): int => (int) $entry['free_implants'], $confirmedRewardRows));
 
 $historyTable = adminTableState($rows, ['request_id', 'request_status', 'implant_type_name', 'delivery_method', 'guided_kit_source', 'guided_kit_name', 'guided_kit_type', 'guided_kit_rental_price', 'latest_payment_status', 'created_at'], 'guide_history');
 $adjustmentsTable = adminTableState($adjustments, ['adjustment_type', 'amount', 'reason', 'admin_name', 'created_at'], 'adjustments');
-$freeHistoryTable = adminTableState($freeHistory, ['request_id', 'created_at', 'free_rule_cycle_id', 'free_implant_every_used', 'total_implants', 'free_implants', 'cycle_cumulative_implants', 'cycle_cumulative_free_implants'], 'free_history');
+$freeHistoryTable = adminTableState($freeHistory, ['request_id', 'created_at', 'status', 'active_free_implant_every_before', 'progress_before', 'progress_after', 'active_free_implant_every_after', 'total_implants', 'free_implants'], 'free_history');
 $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'request_count', 'implant_count', 'revenue', 'is_other'], 'clinic_implant_usage');
 ?>
 
@@ -127,21 +130,27 @@ $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'reques
     <section data-account-panel="free-history" class="hidden">
         <div class="border-b border-slate-100 px-6 py-5">
             <h3 class="text-lg font-bold text-[#13324a]">Implant & Free History</h3>
-            <p class="mt-1 text-sm text-slate-500">Actual values stored on completed requests. No future free implant is calculated here.</p>
+            <p class="mt-1 text-sm text-slate-500">Clinic-specific protected progress, open reservations, and the immutable reward snapshot stored for every guide request.</p>
+        </div>
+        <div class="grid grid-cols-1 gap-4 border-b border-slate-100 bg-blue-50/40 p-6 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-xl border border-blue-100 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-400">Protected Rule</p><p class="mt-1 text-2xl font-extrabold text-[#13324a]">Every <?= (int) ($rewardState['active_free_implant_every'] ?? 0) ?></p></div>
+            <div class="rounded-xl border border-blue-100 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-400">Current Progress</p><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= (int) ($rewardState['progress_implants'] ?? 0) ?> / <?= (int) ($rewardState['active_free_implant_every'] ?? 0) ?></p></div>
+            <div class="rounded-xl border border-blue-100 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-400">Reserved Implants</p><p class="mt-1 text-2xl font-extrabold text-orange-600"><?= (int) ($rewardState['reserved_implants'] ?? 0) ?></p></div>
+            <div class="rounded-xl border border-blue-100 bg-white p-4"><p class="text-xs font-bold uppercase text-slate-400">Next-Cycle Rule</p><p class="mt-1 text-2xl font-extrabold text-[#13324a]">Every <?= $nextFreeImplantEvery ?></p></div>
         </div>
         <div class="grid grid-cols-1 gap-4 border-b border-slate-100 bg-slate-50/60 p-6 sm:grid-cols-3">
-            <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2"><p class="text-xs font-bold uppercase text-slate-400">Completed Orders</p><button type="button" data-account-card-help="completed_orders" data-account-card-value="<?= count($freeHistory) ?>" aria-label="شرح الطلبات المكتملة" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button></div><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= count($freeHistory) ?></p></div>
+            <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2"><p class="text-xs font-bold uppercase text-slate-400">Completed Orders</p><button type="button" data-account-card-help="completed_orders" data-account-card-value="<?= count($confirmedRewardRows) ?>" aria-label="شرح الطلبات المكتملة" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button></div><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= count($confirmedRewardRows) ?></p></div>
             <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2"><p class="text-xs font-bold uppercase text-slate-400">Completed Implants</p><button type="button" data-account-card-help="completed_implants" data-account-card-value="<?= $completedImplants ?>" aria-label="شرح زرعات الطلبات المكتملة" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button></div><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= $completedImplants ?></p></div>
             <div class="rounded-xl border border-slate-200 bg-white p-4"><div class="flex items-center gap-2"><p class="text-xs font-bold uppercase text-slate-400">Free Implants Given</p><button type="button" data-account-card-help="free_implants_given" data-account-card-value="<?= $completedFreeImplants ?>" aria-label="شرح الزرعات المجانية الممنوحة" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button></div><p class="mt-1 text-2xl font-extrabold text-emerald-600"><?= $completedFreeImplants ?></p></div>
         </div>
         <?php adminTableToolbar('free_history', $freeHistoryTable, 'Search implant and free history...'); ?>
         <div class="overflow-x-auto">
             <table class="w-full whitespace-nowrap text-left text-sm">
-                <thead class="border-b-2 border-slate-100 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500"><tr><th class="px-6 py-4">Request / Date</th><th class="px-6 py-4">Cycle</th><th class="px-6 py-4">Rule</th><th class="px-6 py-4">Implants</th><th class="px-6 py-4">Cycle Implants</th><th class="px-6 py-4">Free Given</th><th class="px-6 py-4">Cycle Free</th></tr></thead>
+                <thead class="border-b-2 border-slate-100 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500"><tr><th class="px-6 py-4">Request / Date</th><th class="px-6 py-4">Status</th><th class="px-6 py-4">Protected Rule</th><th class="px-6 py-4">Progress</th><th class="px-6 py-4">Implants</th><th class="px-6 py-4">Free Given</th><th class="px-6 py-4">Rule After</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 font-medium text-slate-700" data-admin-table-body="free_history">
-                    <?php if (!$freeHistoryTable['rows']): ?><tr><td colspan="7" class="px-6 py-12 text-center text-slate-500">No completed implant history matches your search.</td></tr><?php endif; ?>
+                    <?php if (!$freeHistoryTable['rows']): ?><tr><td colspan="7" class="px-6 py-12 text-center text-slate-500">No reward progress history matches your search.</td></tr><?php endif; ?>
                     <?php foreach ($freeHistoryTable['rows'] as $entry): ?>
-                        <tr class="transition hover:bg-slate-50/60"><td class="px-6 py-4"><a href="admin_view_request.php?id=<?= (int) $entry['request_id'] ?>" class="font-bold text-[#1d5f8c] hover:underline">#<?= str_pad($entry['request_id'], 5, '0', STR_PAD_LEFT) ?></a><div class="text-xs text-slate-500"><?= date('M d, Y', strtotime($entry['created_at'])) ?></div></td><td class="px-6 py-4">#<?= (int) $entry['free_rule_cycle_id'] ?></td><td class="px-6 py-4">Every <?= (int) $entry['free_implant_every_used'] ?></td><td class="px-6 py-4 font-bold"><?= (int) $entry['total_implants'] ?></td><td class="px-6 py-4"><?= (int) $entry['cycle_cumulative_implants'] ?></td><td class="px-6 py-4 font-bold text-emerald-600"><?= (int) $entry['free_implants'] ?></td><td class="px-6 py-4 font-bold text-emerald-600"><?= (int) $entry['cycle_cumulative_free_implants'] ?></td></tr>
+                        <tr class="transition hover:bg-slate-50/60"><td class="px-6 py-4"><a href="admin_view_request.php?id=<?= (int) $entry['request_id'] ?>" class="font-bold text-[#1d5f8c] hover:underline">#<?= str_pad($entry['request_id'], 5, '0', STR_PAD_LEFT) ?></a><div class="text-xs text-slate-500"><?= date('M d, Y', strtotime($entry['created_at'])) ?></div></td><td class="px-6 py-4 font-bold"><?= htmlspecialchars(ucfirst((string) $entry['status'])) ?></td><td class="px-6 py-4">Every <?= (int) $entry['active_free_implant_every_before'] ?></td><td class="px-6 py-4"><?= (int) $entry['progress_before'] ?> → <?= (int) $entry['progress_after'] ?></td><td class="px-6 py-4 font-bold"><?= (int) $entry['total_implants'] ?></td><td class="px-6 py-4 font-bold text-emerald-600"><?= (int) $entry['free_implants'] ?></td><td class="px-6 py-4">Every <?= (int) $entry['active_free_implant_every_after'] ?></td></tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>

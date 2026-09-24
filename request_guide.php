@@ -14,7 +14,8 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'clinic') {
 $full_name = $_SESSION['full_name'];
 $clinic_name = $_SESSION['clinic_name'];
 $pricing = getSurgicalGuidePricing($pdo);
-$previous_implants = getClinicCompletedGuideImplants($pdo, (int) $_SESSION['user_id'], (int) $pricing['free_rule_cycle_id']);
+$pricing = getClinicSurgicalGuideQuote($pdo, (int) $_SESSION['user_id'], $pricing);
+$previous_implants = (int) $pricing['clinic_free_progress'];
 $implant_types = getActiveImplantTypes($pdo);
 $guided_kit_options = getActiveSurgicalGuideKitOptions($pdo);
 $minimum_operation_date = getMinimumGuideOperationDate();
@@ -289,7 +290,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
 
                 <div class="mt-6 grid grid-cols-3 gap-3 text-center">
                     <div class="rounded-2xl bg-white/10 p-3">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-blue-100">Previous In Cycle</p>
+                        <p class="text-[10px] font-bold uppercase tracking-wider text-blue-100">Protected Progress</p>
                         <p id="previousImplants" class="text-lg font-extrabold mt-1"><?= (int) $previous_implants ?></p>
                     </div>
                     <div class="rounded-2xl bg-white/10 p-3">
@@ -311,7 +312,9 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                     <div class="flex justify-between gap-3"><span>Clinic print first implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['clinic_print_first_implant_price']) ?></span></div>
                     <div class="flex justify-between gap-3"><span>Admin print first implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['admin_print_first_implant_price']) ?></span></div>
                     <div class="flex justify-between gap-3"><span>Additional implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['additional_implant_price']) ?></span></div>
-                    <div class="flex justify-between gap-3"><span>Free implant every</span><span class="font-bold text-[#13324a]">#<?= (int) $pricing['free_implant_every'] ?></span></div>
+                    <div class="flex justify-between gap-3"><span>Your protected rule</span><span class="font-bold text-[#13324a]">Every <?= (int) $pricing['clinic_free_implant_every'] ?></span></div>
+                    <div class="flex justify-between gap-3"><span>Current progress</span><span class="font-bold text-[#13324a]"><?= (int) $pricing['clinic_free_progress'] ?> / <?= (int) $pricing['clinic_free_implant_every'] ?></span></div>
+                    <div class="flex justify-between gap-3"><span>Next-cycle rule</span><span class="font-bold text-[#13324a]">Every <?= (int) $pricing['next_free_implant_every'] ?></span></div>
                 </div>
             </div>
         </aside>
@@ -321,7 +324,6 @@ $minimum_operation_date = getMinimumGuideOperationDate();
 
     <script>
         const guidePricing = <?= json_encode($pricing) ?>;
-        const previousImplants = <?= (int) $previous_implants ?>;
         const loadedPricingVersion = <?= json_encode($pricing['version']) ?>;
         const upperRegions = <?= json_encode(GUIDE_UPPER_REGIONS) ?>;
         const lowerRegions = <?= json_encode(GUIDE_LOWER_REGIONS) ?>;
@@ -347,10 +349,29 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                 : Number(guidePricing.clinic_print_first_implant_price || guidePricing.first_implant_price || 1300);
             const additionalPrice = Number(guidePricing.additional_implant_price || 0);
             const printFee = 0;
-            const freeEvery = Math.max(1, parseInt(guidePricing.free_implant_every, 10));
+            let activeFreeEvery = Math.max(1, parseInt(guidePricing.clinic_free_implant_every, 10));
+            const nextFreeEvery = Math.max(1, parseInt(guidePricing.next_free_implant_every, 10));
+            let freeProgress = Math.max(0, parseInt(guidePricing.clinic_free_progress, 10));
             const upperSubtotal = upperCount > 0 ? firstPrice + ((upperCount - 1) * additionalPrice) : 0;
             const lowerSubtotal = lowerCount > 0 ? firstPrice + ((lowerCount - 1) * additionalPrice) : 0;
-            const freeImplants = Math.max(0, Math.floor((previousImplants + totalImplants) / freeEvery) - Math.floor(previousImplants / freeEvery));
+            let remainingForReward = totalImplants;
+            let freeImplants = 0;
+            const rewardRules = [];
+            while (remainingForReward > 0) {
+                const ruleUsed = activeFreeEvery;
+                const progressBefore = freeProgress;
+                const used = Math.min(remainingForReward, ruleUsed - progressBefore);
+                freeProgress += used;
+                remainingForReward -= used;
+                let earned = 0;
+                if (freeProgress === ruleUsed) {
+                    earned = 1;
+                    freeImplants++;
+                    freeProgress = 0;
+                    activeFreeEvery = nextFreeEvery;
+                }
+                rewardRules.push({ ruleUsed, progressBefore, used, progressAfter: freeProgress, earned });
+            }
             const discount = freeImplants * additionalPrice;
             const selectedKit = document.querySelector('#guidedKitOption option:checked');
             const rentalPrice = document.querySelector('[name="guided_kit_source"]:checked')?.value === 'rental'
@@ -366,6 +387,8 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                 <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Lower (${lowerCount})</span><span class="font-bold">${money(lowerSubtotal)}</span></div>
                 <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Delivery method first price</span><span class="font-bold">${money(firstPrice)}</span></div>
                 <div class="flex justify-between gap-3 rounded-xl bg-emerald-400/15 px-3 py-2"><span>Free implant discount</span><span class="font-bold">-${money(discount)}</span></div>
+                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Reward progress after request</span><span class="font-bold">${freeProgress} / ${activeFreeEvery}</span></div>
+                ${rewardRules.some((item) => item.ruleUsed !== rewardRules[0]?.ruleUsed) ? `<div class="rounded-xl bg-amber-300/15 px-3 py-2 text-xs">This request finishes your protected rule and continues on the current next-cycle rule.</div>` : ''}
                 ${rentalPrice > 0 ? `<div class="flex justify-between gap-3 rounded-xl bg-cyan-400/15 px-3 py-2"><span>Guided kit rental</span><span class="font-bold">${money(rentalPrice)}</span></div>` : ''}
             `;
         }

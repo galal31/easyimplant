@@ -4,6 +4,7 @@ session_start();
 require_once '../includes/db_connect.php';
 require_once '../includes/r2_config.php';
 require_once '../includes/surgical_guide_kits.php';
+require_once '../includes/surgical_guide_pricing.php';
 
 use Aws\Exception\AwsException;
 
@@ -95,19 +96,30 @@ try {
         }
     }
 
-    // 3. مسح الطلب من قاعدة البيانات (هيمسح الباقي بسبب CASCADE)
+    // 3. Release any open reward reservation, then delete atomically.
+    $pdo->beginTransaction();
+    $requestLock = $pdo->prepare("SELECT service_type, status FROM requests WHERE id = :id FOR UPDATE");
+    $requestLock->execute([':id' => $request_id]);
+    $requestRow = $requestLock->fetch(PDO::FETCH_ASSOC);
+    if ($requestRow && $requestRow['service_type'] === 'surgical_guide' && $requestRow['status'] !== 'completed') {
+        releaseClinicFreeImplantReservation($pdo, (int) $request_id);
+    }
+
     $stmt_delete = $pdo->prepare("DELETE FROM requests WHERE id = :id");
     $stmt_delete->execute([':id' => $request_id]);
 
     if ($stmt_delete->rowCount() > 0) {
+        $pdo->commit();
         http_response_code(200);
         echo json_encode(['success' => true, 'message' => 'Request and all associated files deleted successfully.']);
     } else {
+        $pdo->rollBack();
         http_response_code(404);
         echo json_encode(['success' => false, 'message' => 'Request not found.']);
     }
 
-} catch (\PDOException $e) {
+} catch (\Throwable $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
     error_log("Delete Request DB Error: " . $e->getMessage());
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);

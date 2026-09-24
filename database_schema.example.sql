@@ -383,6 +383,11 @@ CREATE TABLE `surgical_guide_details` (
   `paid_implants` int(11) NOT NULL DEFAULT 0,
   `free_rule_cycle_id` int(11) unsigned DEFAULT NULL,
   `free_implant_every_used` int(11) unsigned DEFAULT NULL,
+  `free_progress_before` int(11) unsigned NOT NULL DEFAULT 0,
+  `free_progress_after` int(11) unsigned NOT NULL DEFAULT 0,
+  `free_implant_every_after` int(11) unsigned DEFAULT NULL,
+  `free_state_version_used` bigint(20) unsigned DEFAULT NULL,
+  `free_rule_path` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`free_rule_path`)),
   `first_implant_price_used` decimal(10,2) NOT NULL DEFAULT 0.00,
   `additional_implant_price_used` decimal(10,2) NOT NULL DEFAULT 0.00,
   `upper_subtotal` decimal(10,2) NOT NULL DEFAULT 0.00,
@@ -408,6 +413,43 @@ CREATE TABLE `surgical_guide_free_rule_cycles` (
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+DROP TABLE IF EXISTS `surgical_guide_free_progress_ledger`;
+DROP TABLE IF EXISTS `surgical_guide_free_progress`;
+CREATE TABLE `surgical_guide_free_progress` (
+  `clinic_id` int(11) NOT NULL,
+  `active_free_implant_every` int(11) unsigned NOT NULL,
+  `progress_implants` int(11) unsigned NOT NULL DEFAULT 0,
+  `reserved_implants` int(11) unsigned NOT NULL DEFAULT 0,
+  `state_version` bigint(20) unsigned NOT NULL DEFAULT 1,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`clinic_id`),
+  CONSTRAINT `fk_sg_free_progress_clinic` FOREIGN KEY (`clinic_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE `surgical_guide_free_progress_ledger` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+  `clinic_id` int(11) NOT NULL,
+  `request_id` int(11) NOT NULL,
+  `status` enum('reserved','confirmed','released') NOT NULL DEFAULT 'reserved',
+  `total_implants` int(11) unsigned NOT NULL,
+  `free_implants` int(11) unsigned NOT NULL DEFAULT 0,
+  `active_free_implant_every_before` int(11) unsigned NOT NULL,
+  `progress_before` int(11) unsigned NOT NULL DEFAULT 0,
+  `active_free_implant_every_after` int(11) unsigned NOT NULL,
+  `progress_after` int(11) unsigned NOT NULL DEFAULT 0,
+  `next_default_free_implant_every` int(11) unsigned NOT NULL,
+  `state_version_after` bigint(20) unsigned NOT NULL,
+  `rule_path` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`rule_path`)),
+  `reserved_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `resolved_at` timestamp NULL DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_sg_free_ledger_request` (`request_id`),
+  KEY `idx_sg_free_ledger_clinic_status` (`clinic_id`,`status`),
+  CONSTRAINT `fk_sg_free_ledger_clinic` FOREIGN KEY (`clinic_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_sg_free_ledger_request` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `surgical_guide_kit_files`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

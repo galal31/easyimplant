@@ -90,14 +90,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ];
             $pdo->beginTransaction();
 
-            if ($ruleChanged) {
-                createSurgicalGuideFreeRuleCycle(
-                    $pdo,
-                    (int) $freeImplantEvery,
-                    isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : null
-                );
-            }
-
             $stmt = $pdo->prepare("
                 INSERT INTO surgical_guide_pricing_settings (setting_key, setting_value)
                 VALUES (:setting_key, :setting_value)
@@ -144,7 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $pdo->commit();
             $_SESSION['pricing_csrf_token'] = bin2hex(random_bytes(32));
             $success = $ruleChanged
-                ? 'Pricing updated. The free implant counter started a new cycle from zero for every clinic.'
+                ? 'Pricing updated. Clinics keep their current protected interval; the new interval starts with each clinic\'s next cycle.'
                 : 'Surgical guide pricing updated successfully.';
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
@@ -223,7 +215,7 @@ $guidedKits = getAllSurgicalGuideKitOptions($pdo);
                 <label class="block text-sm font-semibold text-[#13324a] mb-2">Free Implant Every</label>
                 <input type="number" step="1" min="1" name="free_implant_every" value="<?= htmlspecialchars((int) $pricing['free_implant_every']) ?>" required class="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a]">
                 <p class="text-xs text-slate-500 mt-1">Current example: implants number <?= (int) $pricing['free_implant_every'] ?>, <?= (int) $pricing['free_implant_every'] * 2 ?>, <?= (int) $pricing['free_implant_every'] * 3 ?>... are free.</p>
-                <p class="mt-2 text-xs font-semibold text-orange-600">Changing this number starts a new free-implant cycle from zero for every clinic.</p>
+                <p class="mt-2 text-xs font-semibold text-orange-600">Changing this number does not reset clinics. Each clinic finishes its protected current cycle, then starts the next cycle with the latest saved interval.</p>
             </div>
         </div>
 

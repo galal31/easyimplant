@@ -74,11 +74,16 @@ function ensureSurgicalGuideFreeRuleSchema(PDO $pdo): void
     $tableCount = (int) $pdo->query("SELECT COUNT(*)
         FROM information_schema.TABLES
         WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = 'surgical_guide_free_rule_cycles'")->fetchColumn();
+          AND TABLE_NAME IN ('surgical_guide_free_progress', 'surgical_guide_free_progress_ledger')")->fetchColumn();
 
     $requiredColumns = [
         'free_rule_cycle_id',
         'free_implant_every_used',
+        'free_progress_before',
+        'free_progress_after',
+        'free_implant_every_after',
+        'free_state_version_used',
+        'free_rule_path',
         'first_implant_price_used',
         'additional_implant_price_used',
     ];
@@ -90,29 +95,11 @@ function ensureSurgicalGuideFreeRuleSchema(PDO $pdo): void
           AND COLUMN_NAME IN ({$placeholders})");
     $columnStmt->execute($requiredColumns);
 
-    if ($tableCount !== 1 || (int) $columnStmt->fetchColumn() !== count($requiredColumns)) {
+    if ($tableCount !== 2 || (int) $columnStmt->fetchColumn() !== count($requiredColumns)) {
         throw new RuntimeException('Surgical guide pricing schema is out of date. Run the pricing migrations.');
     }
 
     $ensured = true;
-}
-
-function createSurgicalGuideFreeRuleCycle(PDO $pdo, int $freeEvery, ?int $adminId = null): int
-{
-    ensureSurgicalGuideFreeRuleSchema($pdo);
-    $stmt = $pdo->prepare("INSERT INTO surgical_guide_free_rule_cycles (free_implant_every, created_by)
-        VALUES (:free_every, :created_by)");
-    $stmt->execute([
-        ':free_every' => max(1, $freeEvery),
-        ':created_by' => $adminId,
-    ]);
-    $cycleId = (int) $pdo->lastInsertId();
-
-    $stmt = $pdo->prepare("INSERT INTO surgical_guide_pricing_settings (setting_key, setting_value)
-        VALUES ('active_free_rule_cycle_id', :cycle_id)
-        ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
-    $stmt->execute([':cycle_id' => $cycleId]);
-    return $cycleId;
 }
 
 function getSurgicalGuidePricing(PDO $pdo): array
@@ -127,17 +114,9 @@ function getSurgicalGuidePricing(PDO $pdo): array
     $adminFirstUsd = $rows['admin_print_first_implant_price_usd'] ?? 0;
     $additionalPriceUsd = $rows['additional_implant_price_usd'] ?? 0;
     $freeEvery = isset($rows['free_implant_every']) ? (int) $rows['free_implant_every'] : 0;
-    $activeCycleId = isset($rows['active_free_rule_cycle_id']) ? (int) $rows['active_free_rule_cycle_id'] : 0;
 
-    if ($clinicFirstEgp === null || $adminFirstEgp === null || $additionalPriceEgp === null || $freeEvery < 1 || $activeCycleId < 1) {
+    if ($clinicFirstEgp === null || $adminFirstEgp === null || $additionalPriceEgp === null || $freeEvery < 1) {
         throw new RuntimeException('Surgical guide pricing settings are incomplete.');
-    }
-
-    $cycleStmt = $pdo->prepare("SELECT free_implant_every FROM surgical_guide_free_rule_cycles WHERE id = :id");
-    $cycleStmt->execute([':id' => $activeCycleId]);
-    $cycleFreeEvery = $cycleStmt->fetchColumn();
-    if ($cycleFreeEvery === false || (int) $cycleFreeEvery !== $freeEvery) {
-        throw new RuntimeException('The active free-implant cycle does not match the current pricing rule.');
     }
 
     $pricing = [
@@ -152,7 +131,7 @@ function getSurgicalGuidePricing(PDO $pdo): array
         'admin_print_first_implant_price' => (float) $adminFirstEgp,
         'additional_implant_price' => (float) $additionalPriceEgp,
         'free_implant_every' => $freeEvery,
-        'free_rule_cycle_id' => $activeCycleId,
+        'free_rule_cycle_id' => null,
         'admin_print_fee' => 0.0,
     ];
     $pricing['version'] = hash('sha256', implode('|', [
@@ -160,7 +139,6 @@ function getSurgicalGuidePricing(PDO $pdo): array
         number_format($pricing['admin_print_first_implant_price'], 2, '.', ''),
         number_format($pricing['additional_implant_price'], 2, '.', ''),
         $pricing['free_implant_every'],
-        $pricing['free_rule_cycle_id'],
     ]));
     // Backward compatibility for old templates, if any remain.
     $pricing['first_implant_price'] = $pricing['clinic_print_first_implant_price'];
@@ -177,23 +155,135 @@ function normalizeGuideImplantCounts(array $source): array
     return $result;
 }
 
-function getClinicCompletedGuideImplants(PDO $pdo, int $clinicId, int $freeRuleCycleId): int
+function getClinicFreeImplantState(PDO $pdo, int $clinicId, int $defaultFreeEvery, bool $forUpdate = false): array
 {
-    if ($freeRuleCycleId < 1) {
-        throw new InvalidArgumentException('A valid free-implant cycle is required.');
+    ensureSurgicalGuideFreeRuleSchema($pdo);
+    if ($clinicId < 1 || $defaultFreeEvery < 1) {
+        throw new InvalidArgumentException('A valid clinic and free-implant interval are required.');
     }
-    $stmt = $pdo->prepare("SELECT COALESCE(SUM(sgd.total_implants), 0)
-        FROM requests r
-        JOIN surgical_guide_details sgd ON sgd.request_id = r.id
-        WHERE r.user_id = :clinic_id
-          AND r.service_type = 'surgical_guide'
-          AND r.status = 'completed'
-          AND sgd.free_rule_cycle_id = :cycle_id");
-    $stmt->execute([
-        ':clinic_id' => $clinicId,
-        ':cycle_id' => $freeRuleCycleId,
-    ]);
-    return (int) $stmt->fetchColumn();
+
+    $insert = $pdo->prepare("INSERT IGNORE INTO surgical_guide_free_progress
+        (clinic_id, active_free_implant_every, progress_implants, reserved_implants, state_version)
+        VALUES (:clinic_id, :free_every, 0, 0, 1)");
+    $insert->execute([':clinic_id' => $clinicId, ':free_every' => $defaultFreeEvery]);
+
+    $sql = "SELECT clinic_id, active_free_implant_every, progress_implants, reserved_implants, state_version, created_at, updated_at
+        FROM surgical_guide_free_progress WHERE clinic_id = :clinic_id";
+    if ($forUpdate) $sql .= ' FOR UPDATE';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute([':clinic_id' => $clinicId]);
+    $state = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$state) {
+        throw new RuntimeException('Could not initialize the clinic free-implant progress.');
+    }
+
+    if (
+        (int) $state['active_free_implant_every'] !== $defaultFreeEvery
+        && (int) $state['progress_implants'] === 0
+        && (int) $state['reserved_implants'] === 0
+    ) {
+        $adoptDefault = $pdo->prepare("UPDATE surgical_guide_free_progress AS progress
+            SET active_free_implant_every = :free_every,
+                state_version = state_version + 1
+            WHERE clinic_id = :clinic_id
+              AND progress_implants = 0
+              AND reserved_implants = 0
+              AND NOT EXISTS (
+                SELECT 1 FROM surgical_guide_free_progress_ledger AS ledger
+                WHERE ledger.clinic_id = progress.clinic_id
+                  AND ledger.status IN ('reserved', 'confirmed')
+              )");
+        $adoptDefault->execute([':free_every' => $defaultFreeEvery, ':clinic_id' => $clinicId]);
+        if ($adoptDefault->rowCount() === 1) {
+            $stmt->execute([':clinic_id' => $clinicId]);
+            $state = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+
+    foreach (['clinic_id', 'active_free_implant_every', 'progress_implants', 'reserved_implants', 'state_version'] as $key) {
+        $state[$key] = (int) $state[$key];
+    }
+    if ($state['active_free_implant_every'] < 1 || $state['progress_implants'] >= $state['active_free_implant_every']) {
+        throw new RuntimeException('The clinic free-implant progress is invalid.');
+    }
+    $state['next_default_free_implant_every'] = $defaultFreeEvery;
+    return $state;
+}
+
+function getClinicSurgicalGuideQuote(PDO $pdo, int $clinicId, array $pricing, bool $forUpdate = false): array
+{
+    $state = getClinicFreeImplantState($pdo, $clinicId, (int) $pricing['free_implant_every'], $forUpdate);
+    $quote = $pricing;
+    $quote['global_pricing_version'] = $pricing['version'];
+    $quote['clinic_free_implant_every'] = $state['active_free_implant_every'];
+    $quote['clinic_free_progress'] = $state['progress_implants'];
+    $quote['clinic_reserved_implants'] = $state['reserved_implants'];
+    $quote['clinic_free_state_version'] = $state['state_version'];
+    $quote['next_free_implant_every'] = (int) $pricing['free_implant_every'];
+    $quote['version'] = hash('sha256', implode('|', [
+        $pricing['version'],
+        $clinicId,
+        $state['active_free_implant_every'],
+        $state['progress_implants'],
+        $state['reserved_implants'],
+        $state['state_version'],
+        $pricing['free_implant_every'],
+    ]));
+    return $quote;
+}
+
+function calculateClinicFreeImplantAllocation(
+    int $totalImplants,
+    int $progressBefore,
+    int $activeFreeEvery,
+    int $nextDefaultFreeEvery
+): array {
+    if ($totalImplants < 0 || $activeFreeEvery < 1 || $nextDefaultFreeEvery < 1) {
+        throw new InvalidArgumentException('Invalid free-implant allocation inputs.');
+    }
+    if ($progressBefore < 0 || $progressBefore >= $activeFreeEvery) {
+        throw new InvalidArgumentException('Free-implant progress must be inside the active cycle.');
+    }
+
+    $remaining = $totalImplants;
+    $progress = $progressBefore;
+    $activeEvery = $activeFreeEvery;
+    $freeImplants = 0;
+    $path = [];
+
+    while ($remaining > 0) {
+        $segmentBefore = $progress;
+        $segmentEvery = $activeEvery;
+        $take = min($remaining, $segmentEvery - $segmentBefore);
+        $progress += $take;
+        $remaining -= $take;
+        $earned = 0;
+
+        if ($progress === $segmentEvery) {
+            $earned = 1;
+            $freeImplants++;
+            $progress = 0;
+            $activeEvery = $nextDefaultFreeEvery;
+        }
+
+        $path[] = [
+            'free_implant_every' => $segmentEvery,
+            'progress_before' => $segmentBefore,
+            'implants' => $take,
+            'progress_after' => $progress,
+            'free_implants' => $earned,
+        ];
+    }
+
+    return [
+        'free_implants' => $freeImplants,
+        'progress_before' => $progressBefore,
+        'progress_after' => $progress,
+        'active_free_implant_every_before' => $activeFreeEvery,
+        'active_free_implant_every_after' => $activeEvery,
+        'next_default_free_implant_every' => $nextDefaultFreeEvery,
+        'rule_path' => $path,
+    ];
 }
 
 function calculateArchSubtotal(int $count, float $firstPrice, float $additionalPrice): float
@@ -226,7 +316,22 @@ function calculateSurgicalGuidePrice(array $implantCounts, string $deliveryMetho
     $upperSubtotal = calculateArchSubtotal($upper, $firstPrice, $additionalPrice);
     $lowerSubtotal = calculateArchSubtotal($lower, $firstPrice, $additionalPrice);
 
-    $freeImplants = max(0, intdiv($previousImplants + $totalImplants, $freeEvery) - intdiv($previousImplants, $freeEvery));
+    $activeFreeEvery = isset($pricing['clinic_free_implant_every'])
+        ? (int) $pricing['clinic_free_implant_every']
+        : $freeEvery;
+    $progressBefore = isset($pricing['clinic_free_progress'])
+        ? (int) $pricing['clinic_free_progress']
+        : ($previousImplants % $activeFreeEvery);
+    $nextDefaultFreeEvery = isset($pricing['next_free_implant_every'])
+        ? (int) $pricing['next_free_implant_every']
+        : $freeEvery;
+    $allocation = calculateClinicFreeImplantAllocation(
+        $totalImplants,
+        $progressBefore,
+        $activeFreeEvery,
+        $nextDefaultFreeEvery
+    );
+    $freeImplants = $allocation['free_implants'];
     $discount = $freeImplants * $additionalPrice;
     $totalPrice = max(0, $upperSubtotal + $lowerSubtotal - $discount);
 
@@ -243,7 +348,154 @@ function calculateSurgicalGuidePrice(array $implantCounts, string $deliveryMetho
         'print_fee' => 0,
         'discount_amount' => $discount,
         'total_price' => $totalPrice,
+        'free_progress_before' => $allocation['progress_before'],
+        'free_progress_after' => $allocation['progress_after'],
+        'free_implant_every_before' => $allocation['active_free_implant_every_before'],
+        'free_implant_every_after' => $allocation['active_free_implant_every_after'],
+        'next_default_free_implant_every' => $allocation['next_default_free_implant_every'],
+        'free_rule_path' => $allocation['rule_path'],
     ];
+}
+
+function reserveClinicFreeImplantProgress(
+    PDO $pdo,
+    int $clinicId,
+    int $requestId,
+    array $lockedState,
+    array $priceSummary
+): int {
+    $currentVersion = (int) $lockedState['state_version'];
+    $nextVersion = $currentVersion + 1;
+    $totalImplants = (int) $priceSummary['total_implants'];
+
+    $update = $pdo->prepare("UPDATE surgical_guide_free_progress
+        SET active_free_implant_every = :active_after,
+            progress_implants = :progress_after,
+            reserved_implants = reserved_implants + :total_implants,
+            state_version = :next_version
+        WHERE clinic_id = :clinic_id AND state_version = :current_version");
+    $update->execute([
+        ':active_after' => (int) $priceSummary['free_implant_every_after'],
+        ':progress_after' => (int) $priceSummary['free_progress_after'],
+        ':total_implants' => $totalImplants,
+        ':next_version' => $nextVersion,
+        ':clinic_id' => $clinicId,
+        ':current_version' => $currentVersion,
+    ]);
+    if ($update->rowCount() !== 1) {
+        throw new DomainException('Free-implant progress changed while this request was submitted. Please refresh and review the price.');
+    }
+
+    $ledger = $pdo->prepare("INSERT INTO surgical_guide_free_progress_ledger (
+            clinic_id, request_id, status, total_implants, free_implants,
+            active_free_implant_every_before, progress_before,
+            active_free_implant_every_after, progress_after,
+            next_default_free_implant_every, state_version_after, rule_path
+        ) VALUES (
+            :clinic_id, :request_id, 'reserved', :total_implants, :free_implants,
+            :active_before, :progress_before, :active_after, :progress_after,
+            :next_default, :state_version_after, :rule_path
+        )");
+    $ledger->execute([
+        ':clinic_id' => $clinicId,
+        ':request_id' => $requestId,
+        ':total_implants' => $totalImplants,
+        ':free_implants' => (int) $priceSummary['free_implants'],
+        ':active_before' => (int) $priceSummary['free_implant_every_before'],
+        ':progress_before' => (int) $priceSummary['free_progress_before'],
+        ':active_after' => (int) $priceSummary['free_implant_every_after'],
+        ':progress_after' => (int) $priceSummary['free_progress_after'],
+        ':next_default' => (int) $priceSummary['next_default_free_implant_every'],
+        ':state_version_after' => $nextVersion,
+        ':rule_path' => json_encode($priceSummary['free_rule_path'], JSON_THROW_ON_ERROR),
+    ]);
+    return $nextVersion;
+}
+
+function confirmClinicFreeImplantReservation(PDO $pdo, int $requestId): bool
+{
+    ensureSurgicalGuideFreeRuleSchema($pdo);
+    $stmt = $pdo->prepare("SELECT * FROM surgical_guide_free_progress_ledger WHERE request_id = :request_id FOR UPDATE");
+    $stmt->execute([':request_id' => $requestId]);
+    $ledger = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$ledger || $ledger['status'] === 'confirmed') return false;
+    if ($ledger['status'] === 'released') {
+        throw new DomainException('The free-implant reservation for this request was already released.');
+    }
+
+    $state = $pdo->prepare("SELECT state_version FROM surgical_guide_free_progress WHERE clinic_id = :clinic_id FOR UPDATE");
+    $state->execute([':clinic_id' => (int) $ledger['clinic_id']]);
+    if (!$state->fetchColumn()) {
+        throw new RuntimeException('Clinic free-implant progress was not found.');
+    }
+
+    $updateState = $pdo->prepare("UPDATE surgical_guide_free_progress
+        SET reserved_implants = GREATEST(0, reserved_implants - :implants),
+            state_version = state_version + 1
+        WHERE clinic_id = :clinic_id");
+    $updateState->execute([
+        ':implants' => (int) $ledger['total_implants'],
+        ':clinic_id' => (int) $ledger['clinic_id'],
+    ]);
+    $updateLedger = $pdo->prepare("UPDATE surgical_guide_free_progress_ledger
+        SET status = 'confirmed', resolved_at = NOW()
+        WHERE id = :id AND status = 'reserved'");
+    $updateLedger->execute([':id' => (int) $ledger['id']]);
+    return $updateLedger->rowCount() === 1;
+}
+
+function releaseClinicFreeImplantReservation(PDO $pdo, int $requestId): bool
+{
+    ensureSurgicalGuideFreeRuleSchema($pdo);
+    $stmt = $pdo->prepare("SELECT * FROM surgical_guide_free_progress_ledger WHERE request_id = :request_id FOR UPDATE");
+    $stmt->execute([':request_id' => $requestId]);
+    $ledger = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$ledger || $ledger['status'] === 'released') return false;
+    if ($ledger['status'] === 'confirmed') {
+        throw new DomainException('A confirmed free-implant reservation cannot be released.');
+    }
+
+    $stateStmt = $pdo->prepare("SELECT * FROM surgical_guide_free_progress WHERE clinic_id = :clinic_id FOR UPDATE");
+    $stateStmt->execute([':clinic_id' => (int) $ledger['clinic_id']]);
+    $state = $stateStmt->fetch(PDO::FETCH_ASSOC);
+    if (!$state) {
+        throw new RuntimeException('Clinic free-implant progress was not found.');
+    }
+
+    $canRewind = (int) $state['state_version'] === (int) $ledger['state_version_after'];
+    $sql = "UPDATE surgical_guide_free_progress
+        SET reserved_implants = GREATEST(0, reserved_implants - :implants),
+            state_version = state_version + 1";
+    $params = [
+        ':implants' => (int) $ledger['total_implants'],
+        ':clinic_id' => (int) $ledger['clinic_id'],
+    ];
+    if ($canRewind) {
+        $sql .= ", active_free_implant_every = :active_before, progress_implants = :progress_before";
+        $params[':active_before'] = (int) $ledger['active_free_implant_every_before'];
+        $params[':progress_before'] = (int) $ledger['progress_before'];
+    }
+    $sql .= ' WHERE clinic_id = :clinic_id';
+    $updateState = $pdo->prepare($sql);
+    $updateState->execute($params);
+
+    $updateLedger = $pdo->prepare("UPDATE surgical_guide_free_progress_ledger
+        SET status = 'released', resolved_at = NOW()
+        WHERE id = :id AND status = 'reserved'");
+    $updateLedger->execute([':id' => (int) $ledger['id']]);
+    return $updateLedger->rowCount() === 1;
+}
+
+function getClinicFreeImplantLedgerRows(PDO $pdo, int $clinicId): array
+{
+    ensureSurgicalGuideFreeRuleSchema($pdo);
+    $stmt = $pdo->prepare("SELECT l.*, r.status AS request_status, r.created_at
+        FROM surgical_guide_free_progress_ledger l
+        JOIN requests r ON r.id = l.request_id
+        WHERE l.clinic_id = :clinic_id
+        ORDER BY l.id DESC");
+    $stmt->execute([':clinic_id' => $clinicId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
 function sumApprovedPaymentsByRequest(PDO $pdo): array
@@ -320,6 +572,11 @@ function getClinicGuideRows(PDO $pdo, int $clinicId): array
             sgd.free_implants,
             sgd.free_rule_cycle_id,
             sgd.free_implant_every_used,
+            sgd.free_progress_before,
+            sgd.free_progress_after,
+            sgd.free_implant_every_after,
+            sgd.free_state_version_used,
+            sgd.free_rule_path,
             sgd.first_implant_price_used,
             sgd.additional_implant_price_used,
             sgd.discount_amount,
@@ -346,34 +603,6 @@ function getClinicGuideRows(PDO $pdo, int $clinicId): array
     return $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 
-function getFreeImplantLedger(array $rows): array
-{
-    $completed = array_values(array_filter($rows, fn($r) => ($r['request_status'] ?? '') === 'completed'));
-    usort($completed, fn($a, $b) => strtotime($a['created_at']) <=> strtotime($b['created_at']));
-
-    $ledger = [];
-    $cumulativeImplants = 0;
-    $cumulativeFreeImplants = 0;
-    $cycleTotals = [];
-    foreach ($completed as $row) {
-        $cumulativeImplants += (int) $row['total_implants'];
-        $cumulativeFreeImplants += (int) $row['free_implants'];
-        $cycleId = (int) ($row['free_rule_cycle_id'] ?? 0);
-        if (!isset($cycleTotals[$cycleId])) {
-            $cycleTotals[$cycleId] = ['implants' => 0, 'free_implants' => 0];
-        }
-        $cycleTotals[$cycleId]['implants'] += (int) $row['total_implants'];
-        $cycleTotals[$cycleId]['free_implants'] += (int) $row['free_implants'];
-        $entry = $row;
-        $entry['cumulative_implants'] = $cumulativeImplants;
-        $entry['cumulative_free_implants'] = $cumulativeFreeImplants;
-        $entry['cycle_cumulative_implants'] = $cycleTotals[$cycleId]['implants'];
-        $entry['cycle_cumulative_free_implants'] = $cycleTotals[$cycleId]['free_implants'];
-        $ledger[] = $entry;
-    }
-    return array_reverse($ledger);
-}
-
 function getClinicAdjustments(PDO $pdo, int $clinicId): array
 {
     $stmt = $pdo->prepare("SELECT a.*, u.full_name AS admin_name
@@ -394,11 +623,14 @@ function getClinicAccount(PDO $pdo, int $clinicId): ?array
 
     $rows = getClinicGuideRows($pdo, $clinicId);
     $manualAdjustments = getManualAdjustmentSum($pdo, $clinicId);
+    $pricing = getSurgicalGuidePricing($pdo);
     return [
         'clinic' => $clinic,
         'summary' => getClinicAccountSummaryFromRows($rows, $manualAdjustments),
         'rows' => $rows,
-        'ledger' => getFreeImplantLedger($rows),
+        'reward_state' => getClinicFreeImplantState($pdo, $clinicId, (int) $pricing['free_implant_every']),
+        'reward_ledger' => getClinicFreeImplantLedgerRows($pdo, $clinicId),
+        'next_free_implant_every' => (int) $pricing['free_implant_every'],
         'adjustments' => getClinicAdjustments($pdo, $clinicId),
     ];
 }

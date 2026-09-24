@@ -2,6 +2,7 @@
 // api/update_request_status.php
 require_once '../includes/db_connect.php';
 require_once '../includes/request_workflow.php';
+require_once '../includes/surgical_guide_pricing.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -90,6 +91,7 @@ try {
 
     if ($status === 'rejected') {
         if ($is_surgical_guide) {
+            releaseClinicFreeImplantReservation($pdo, (int) $request_id);
             $stmt_pending_payments = $pdo->prepare("UPDATE payments
                 SET status = 'rejected'
                 WHERE request_id = :request_id AND status = 'pending_verification'");
@@ -135,10 +137,11 @@ try {
     http_response_code(200);
     echo json_encode(['success' => 'Request status updated successfully.']);
 
-} catch (\PDOException $e) {
+} catch (\Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     error_log("Update Request Status DB Error: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['error' => 'Database error occurred.']);
+    $isConflict = $e instanceof DomainException;
+    http_response_code($isConflict ? 409 : 500);
+    echo json_encode(['error' => $isConflict ? $e->getMessage() : 'Database error occurred.']);
 }
 ?>

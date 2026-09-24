@@ -3,6 +3,7 @@
 session_start();
 require_once '../includes/db_connect.php';
 require_once '../includes/request_workflow.php';
+require_once '../includes/surgical_guide_pricing.php';
 require_once '../includes/r2_config.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -176,6 +177,8 @@ try {
         }
     }
 
+    confirmClinicFreeImplantReservation($pdo, (int) $request_id);
+
     // Update the main request status to 'completed'
     $stmt_status = $pdo->prepare("UPDATE requests SET status = 'completed' WHERE id = :id");
     $stmt_status->execute([':id' => $request_id]);
@@ -196,12 +199,13 @@ try {
     }
     http_response_code(200);
     echo json_encode(['success' => true, 'message' => 'Deliverables successfully saved and the case is marked as completed.']);
-} catch (\PDOException $e) {
+} catch (\Throwable $e) {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
     error_log("Upload Deliverables DB Error: " . $e->getMessage());
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database error occurred while saving the deliverables.']);
+    $isConflict = $e instanceof DomainException;
+    http_response_code($isConflict ? 409 : 500);
+    echo json_encode(['success' => false, 'message' => $isConflict ? $e->getMessage() : 'Database error occurred while saving the deliverables.']);
 }
 ?>

@@ -91,15 +91,22 @@ try {
     $payment = $stmt_pay->fetch();
 
     $clinic_account = null;
-    $clinic_cycle_completed_implants = 0;
+    $free_progress_ledger = null;
+    $free_rules_used = [];
     if ($request['service_type'] === 'surgical_guide') {
         $clinic_account = getClinicAccount($pdo, (int) $request['user_id']);
-        if (!empty($details['free_rule_cycle_id'])) {
-            $clinic_cycle_completed_implants = getClinicCompletedGuideImplants(
-                $pdo,
-                (int) $request['user_id'],
-                (int) $details['free_rule_cycle_id']
-            );
+        $freeLedgerStmt = $pdo->prepare("SELECT * FROM surgical_guide_free_progress_ledger WHERE request_id = :request_id");
+        $freeLedgerStmt->execute([':request_id' => $request_id]);
+        $free_progress_ledger = $freeLedgerStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        $freeRulePath = json_decode((string) ($details['free_rule_path'] ?? '[]'), true);
+        if (is_array($freeRulePath)) {
+            foreach ($freeRulePath as $segment) {
+                $rule = (int) ($segment['free_implant_every'] ?? 0);
+                if ($rule > 0 && !in_array($rule, $free_rules_used, true)) $free_rules_used[] = $rule;
+            }
+        }
+        if (!$free_rules_used && !empty($details['free_implant_every_used'])) {
+            $free_rules_used[] = (int) $details['free_implant_every_used'];
         }
     }
 
@@ -483,11 +490,13 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <?php endforeach; ?>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 bg-slate-50 border-t border-slate-100 text-sm">
+                            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 bg-slate-50 border-t border-slate-100 text-sm">
                                 <div><span class="text-slate-500">Print fee:</span> <span class="font-bold"><?= formatMoney($details['print_fee'] ?? 0) ?></span></div>
                                 <div><span class="text-slate-500">Paid implants:</span> <span class="font-bold"><?= (int) ($details['paid_implants'] ?? 0) ?></span></div>
-                                <div><span class="text-slate-500">Free rule used:</span> <span class="font-bold">Every <?= (int) ($details['free_implant_every_used'] ?? 0) ?></span></div>
-                                <div><span class="text-slate-500">Completed this cycle:</span> <span class="font-bold"><?= $clinic_cycle_completed_implants ?></span></div>
+                                <div><span class="text-slate-500">Free rule used:</span> <span class="font-bold"><?= $free_rules_used ? 'Every ' . htmlspecialchars(implode(' → ', $free_rules_used)) : 'Legacy' ?></span></div>
+                                <div><span class="text-slate-500">Progress before:</span> <span class="font-bold"><?= (int) ($details['free_progress_before'] ?? 0) ?> / <?= (int) ($details['free_implant_every_used'] ?? 0) ?></span></div>
+                                <div><span class="text-slate-500">Progress after:</span> <span class="font-bold"><?= (int) ($details['free_progress_after'] ?? 0) ?> / <?= (int) ($details['free_implant_every_after'] ?? $details['free_implant_every_used'] ?? 0) ?></span></div>
+                                <div><span class="text-slate-500">Reward reservation:</span> <span class="font-bold"><?= htmlspecialchars(ucfirst((string) ($free_progress_ledger['status'] ?? 'legacy'))) ?></span></div>
                             </div>
                             <?php if ((float) ($details['guided_kit_rental_price'] ?? 0) > 0): ?>
                                 <div class="flex items-center justify-between border-t border-cyan-100 bg-cyan-50 px-4 py-3 text-sm">

@@ -35,7 +35,7 @@ foreach ($surgeonFiles as $file) {
                 </div>
             <?php endforeach; ?>
         </div>
-    <?php elseif (!empty($details['requires_quote'])): ?>
+    <?php elseif (!empty($details['requires_quote']) && empty($details['total_price'])): ?>
         <div class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-4 text-center font-bold text-orange-700" dir="rtl">سيتم الرد بعرض سعر</div>
     <?php endif; ?>
 
@@ -45,9 +45,11 @@ foreach ($surgeonFiles as $file) {
                 <div><p class="text-xs text-slate-500"><?= ($details['implant_package'] ?? '') === 'all_on_arches' ? 'Team work' : 'Surgeon work' ?></p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ((($details['implant_package'] ?? '') === 'all_on_arches') ? ($details['team_fee_total'] ?? 0) : ($details['doctor_fee_total'] ?? 0)), 2) ?> EGP</p></div>
                 <div><p class="text-xs text-slate-500">Implants supplied by us</p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ($details['implant_cost_total'] ?? 0), 2) ?> EGP</p></div>
                 <div><p class="text-xs text-slate-500">Travel</p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ($details['travel_price'] ?? 0), 2) ?> EGP</p></div>
-                <div class="rounded-lg bg-[#13324a] px-3 py-2 text-white"><p class="text-xs text-slate-300">Estimated total</p><p class="mt-1 text-base font-extrabold"><?= number_format((float) ($details['estimated_total'] ?? 0), 2) ?> EGP</p></div>
+                <div class="rounded-lg bg-[#13324a] px-3 py-2 text-white"><p class="text-xs text-slate-300"><?= !empty($details['price_confirmed_at']) ? 'Final total' : 'Estimated total' ?></p><p class="mt-1 text-base font-extrabold"><?= number_format((float) ($details['total_price'] ?? $details['estimated_total'] ?? 0), 2) ?> EGP</p></div>
             </div>
         </div>
+    <?php elseif (!empty($details['requires_quote']) && (float) ($details['total_price'] ?? 0) > 0): ?>
+        <div class="md:col-span-2 rounded-xl bg-[#13324a] p-5 text-white"><p class="text-xs font-bold uppercase tracking-wider text-blue-100">Final total</p><p class="mt-1 text-2xl font-extrabold"><?= number_format((float) $details['total_price'], 2) ?> EGP</p></div>
     <?php endif; ?>
 
     <?php foreach (['medical_history' => 'Medical History & Considerations', 'notes' => 'Additional Notes'] as $key => $label): ?>

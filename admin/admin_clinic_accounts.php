@@ -17,7 +17,7 @@ $totals = [
     'free_implants' => 0,
     'total_price' => 0,
     'approved_paid' => 0,
-    'balance_due' => 0,
+    'awaiting_payment' => 0,
     'discount_amount' => 0,
     'guided_kit_rental_requests' => 0,
     'guided_kit_rental_total' => 0,
@@ -25,14 +25,14 @@ $totals = [
 ];
 
 foreach ($accounts as $account) {
-    foreach (['guide_requests', 'total_implants', 'free_implants', 'total_price', 'approved_paid', 'balance_due', 'discount_amount', 'guided_kit_rental_requests', 'guided_kit_rental_total', 'manual_adjustments'] as $key) {
+    foreach (['guide_requests', 'total_implants', 'free_implants', 'total_price', 'approved_paid', 'awaiting_payment', 'discount_amount', 'guided_kit_rental_requests', 'guided_kit_rental_total', 'manual_adjustments'] as $key) {
         $totals[$key] += $account['summary'][$key];
     }
 }
 
 $accountsTable = adminTableState($accounts, [
     'clinic.clinic_name', 'clinic.full_name', 'clinic.email', 'clinic.phone', 'clinic.country', 'clinic.governorate', 'clinic.status',
-    'summary.guide_requests', 'summary.total_implants', 'summary.total_price', 'summary.guided_kit_rental_total', 'summary.approved_paid', 'summary.balance_due'
+    'summary.guide_requests', 'summary.total_implants', 'summary.total_price', 'summary.guided_kit_rental_total', 'summary.approved_paid', 'summary.awaiting_payment'
 ], 'clinic_accounts');
 ?>
 
@@ -71,12 +71,12 @@ require 'includes/clinic_tabs.php';
         <p class="text-2xl font-extrabold text-emerald-600 mt-1"><?= formatMoney($totals['approved_paid']) ?></p>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Manual Adjustments</p>
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Legacy Adjustments</p>
         <p class="text-2xl font-extrabold <?= $totals['manual_adjustments'] >= 0 ? 'text-orange-600' : 'text-emerald-600' ?> mt-1"><?= formatMoney($totals['manual_adjustments']) ?></p>
     </div>
     <div class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
-        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Balance Due</p>
-        <p class="text-2xl font-extrabold text-orange-600 mt-1"><?= formatMoney($totals['balance_due']) ?></p>
+        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Awaiting Payment</p>
+        <p class="text-2xl font-extrabold text-orange-600 mt-1"><?= formatMoney($totals['awaiting_payment']) ?></p>
     </div>
 </div>
 
@@ -96,8 +96,8 @@ require 'includes/clinic_tabs.php';
                     <th class="px-6 py-4">Orders Value</th>
                     <th class="px-6 py-4">Kit Rentals</th>
                     <th class="px-6 py-4">Paid</th>
-                    <th class="px-6 py-4">Adjustments</th>
-                    <th class="px-6 py-4">Balance</th>
+                    <th class="px-6 py-4">Legacy Adjustments</th>
+                    <th class="px-6 py-4">Awaiting Payment</th>
                     <th class="px-6 py-4 text-right">Action</th>
                 </tr>
             </thead>
@@ -126,7 +126,7 @@ require 'includes/clinic_tabs.php';
                         <td class="px-6 py-4"><div class="font-bold text-[#1d5f8c]"><?= formatMoney($summary['guided_kit_rental_total']) ?></div><div class="text-xs text-slate-400"><?= (int) $summary['guided_kit_rental_requests'] ?> request(s)</div></td>
                         <td class="px-6 py-4 text-emerald-600 font-bold"><?= formatMoney($summary['approved_paid']) ?></td>
                         <td class="px-6 py-4 <?= ($summary['manual_adjustments'] ?? 0) >= 0 ? 'text-orange-600' : 'text-emerald-600' ?> font-bold"><?= formatMoney($summary['manual_adjustments'] ?? 0) ?></td>
-                        <td class="px-6 py-4 <?= $summary['balance_due'] > 0 ? 'text-orange-600' : 'text-slate-500' ?> font-bold"><?= formatMoney($summary['balance_due']) ?></td>
+                        <td class="px-6 py-4 <?= $summary['awaiting_payment'] > 0 ? 'text-orange-600' : 'text-slate-500' ?> font-bold"><?= formatMoney($summary['awaiting_payment']) ?></td>
                         <td class="px-6 py-4 text-right">
                             <a href="admin_clinic_account.php?id=<?= (int) $clinic['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-[#13324a] hover:text-white">
                                 View Account

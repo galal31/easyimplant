@@ -7,6 +7,7 @@ require_once '../includes/surgeon_services.php';
 require_once '../includes/r2_config.php';
 require_once '../includes/request_file_metadata.php';
 require_once '../includes/request_review.php';
+require_once '../includes/request_workflow.php';
 
 use Aws\Exception\AwsException;
 
@@ -367,7 +368,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                     <?php elseif ($request['status'] === 'awaiting_clinic_approval'): ?>
                         <p class="text-xs text-cyan-700 leading-relaxed">Clinic is reviewing the latest package.</p>
                     <?php elseif ($request['status'] === 'pending_payment'): ?>
-                        <p class="text-xs text-orange-600 leading-relaxed">Clinic approved. Payment gateway not yet connected.</p>
+                        <p class="text-xs text-orange-600 leading-relaxed">Waiting for the clinic to complete payment.</p>
                     <?php elseif ($request['status'] === 'in_progress'): ?>
                         <p class="text-xs text-blue-700 leading-relaxed">Upload the final delivery package below.</p>
                     <?php elseif ($request['status'] === 'completed'): ?>
@@ -376,7 +377,10 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                         <p class="text-xs font-semibold text-red-700">Request rejected and locked.</p>
                     <?php endif; ?>
                 <?php else: ?>
-                    <p class="text-xs text-slate-600">Surgeon request — use status selector below.</p>
+                    <?php if ($request['status'] === 'pending_review'): ?><p class="text-xs text-slate-600">Review the request and approve its final price.</p>
+                    <?php elseif ($request['status'] === 'pending_payment'): ?><p class="text-xs text-orange-600">Waiting for the clinic to complete payment.</p>
+                    <?php elseif ($request['status'] === 'in_progress'): ?><p class="text-xs text-blue-700">Paid and in progress.</p>
+                    <?php else: ?><p class="text-xs text-slate-600">This request is locked.</p><?php endif; ?>
                 <?php endif; ?>
             </div>
         </div>
@@ -395,6 +399,19 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                         <div class="h-2 rounded-full <?= $request['status'] !== 'rejected' && $index <= $current_step ? 'bg-[#1d5f8c]' : 'bg-slate-200' ?>"></div>
                         <span class="mt-1.5 block text-[10px] font-bold <?= $request['status'] !== 'rejected' && $index <= $current_step ? 'text-[#1d5f8c]' : 'text-slate-400' ?>"><?= $step_label ?></span>
                     </div>
+                <?php endforeach; ?>
+            </div>
+        </section>
+        <?php else: ?>
+        <?php
+            $surgeon_steps = ['pending_review', 'pending_payment', 'in_progress', 'completed'];
+            $surgeon_step = array_search($request['status'], $surgeon_steps, true);
+            $surgeon_step = $surgeon_step === false ? -1 : $surgeon_step;
+        ?>
+        <section class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Surgeon request workflow">
+            <div class="grid grid-cols-4 gap-1 text-center">
+                <?php foreach (['Admin review', 'Payment', 'In progress', 'Complete'] as $index => $step_label): ?>
+                    <div><div class="h-2 rounded-full <?= $request['status'] !== 'rejected' && $index <= $surgeon_step ? 'bg-[#1d5f8c]' : 'bg-slate-200' ?>"></div><span class="mt-1.5 block text-[10px] font-bold <?= $request['status'] !== 'rejected' && $index <= $surgeon_step ? 'text-[#1d5f8c]' : 'text-slate-400' ?>"><?= $step_label ?></span></div>
                 <?php endforeach; ?>
             </div>
         </section>
@@ -418,22 +435,38 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <?php require __DIR__ . '/../includes/surgeon_request_details.php'; ?>
                             </div>
                         </div>
-                        <!-- Status select for surgeon requests -->
+                        <!-- Protected surgeon request workflow -->
                         <div class="case-card">
                             <div class="case-card-header">
                                 <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-500"><i class="fa-solid fa-pen-to-square"></i></div>
-                                <h2 class="text-base font-bold text-[#13324a]">Update Status</h2>
+                                <h2 class="text-base font-bold text-[#13324a]">Request workflow</h2>
                             </div>
                             <div class="case-card-body">
-                                <select id="statusSelect" class="w-full text-sm border border-slate-300 rounded-xl px-3 py-2.5 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] bg-white mb-3">
-                                    <option value="pending_review" <?= $request['status'] === 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
-                                    <option value="rejected" <?= $request['status'] === 'rejected' ? 'selected' : '' ?>>Rejected</option>
-                                    <option value="pending_payment" <?= $request['status'] === 'pending_payment' ? 'selected' : '' ?>>Pending Payment</option>
-                                    <option value="in_progress" <?= $request['status'] === 'in_progress' ? 'selected' : '' ?>>In Progress</option>
-                                    <option value="completed" <?= $request['status'] === 'completed' ? 'selected' : '' ?>>Completed</option>
-                                </select>
-                                <textarea id="rejectionReason" rows="3" class="hidden w-full text-sm border border-red-200 rounded-xl px-3 py-2.5 focus:ring-red-400 focus:border-red-400 bg-red-50 mb-3" placeholder="Required reason if rejected"><?= htmlspecialchars($request['rejection_reason'] ?? '') ?></textarea>
-                                <button onclick="updateStatus(<?= $request['id'] ?>)" class="w-full bg-[#13324a] hover:bg-[#1d5f8c] text-white font-bold py-2.5 rounded-xl transition text-sm">Save Status</button>
+                                <?php if ($request['status'] === 'pending_review'): ?>
+                                    <form id="prepareSurgeonPaymentForm" class="space-y-3">
+                                        <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>">
+                                        <?php if (!empty($details['requires_quote']) || empty($details['total_price'])): ?>
+                                            <label class="block text-sm font-semibold text-[#13324a]">Final price (EGP)</label>
+                                            <input type="number" name="total_price" min="0.01" step="0.01" required value="<?= htmlspecialchars((string) ($details['total_price'] ?? '')) ?>" class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm focus:border-[#1d5f8c] focus:ring-[#1d5f8c]">
+                                        <?php else: ?>
+                                            <div class="rounded-xl border border-blue-100 bg-blue-50 p-4"><p class="text-xs font-bold uppercase text-blue-600">Stored calculated price</p><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= formatMoney($details['total_price'] ?? $details['estimated_total']) ?></p></div>
+                                        <?php endif; ?>
+                                        <button type="submit" class="w-full rounded-xl bg-[#13324a] py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5f8c]">Request Payment</button>
+                                    </form>
+                                <?php elseif ($request['status'] === 'pending_payment'): ?>
+                                    <div class="rounded-xl border border-orange-100 bg-orange-50 p-4"><p class="text-sm font-bold text-orange-800">Waiting for payment</p><p class="mt-1 text-xl font-extrabold text-[#13324a]"><?= formatMoney($details['total_price']) ?></p><p class="mt-1 text-xs text-orange-700">The request can enter production only after payment is completed.</p></div>
+                                <?php elseif ($request['status'] === 'in_progress'): ?>
+                                    <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, 'completed')" class="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700">Mark Completed</button>
+                                <?php else: ?>
+                                    <p class="text-sm font-semibold text-slate-500">No further workflow actions are available.</p>
+                                <?php endif; ?>
+
+                                <?php if (in_array($request['status'], ['pending_review', 'pending_payment', 'in_progress'], true)): ?>
+                                    <div class="mt-4 border-t border-slate-100 pt-4">
+                                        <textarea id="surgeonRejectionReason" rows="3" class="mb-3 w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm focus:border-red-400 focus:ring-red-400" placeholder="Rejection reason (required)"></textarea>
+                                        <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, 'rejected')" class="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-500 hover:text-white">Reject Request</button>
+                                    </div>
+                                <?php endif; ?>
                             </div>
                         </div>
 
@@ -834,7 +867,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                             <div class="flex items-center justify-between gap-4 mb-4">
                                 <div>
                                     <p class="text-sm font-bold text-[#13324a]">Amount: <?= $payment['amount'] ? htmlspecialchars(formatCurrencyMoney($payment['amount'], $payment['currency'] ?? 'EGP')) : 'Not specified' ?></p>
-                                    <p class="text-xs text-slate-500"><?= ($payment['payment_source'] ?? 'manual_receipt') === 'xpay' ? 'Confirmed' : 'Uploaded' ?>: <?= date('M d, Y, H:i', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></p>
+                                    <p class="text-xs text-slate-500"><?= ($payment['payment_source'] ?? 'manual_receipt') === 'xpay' ? 'Completed' : 'Uploaded' ?>: <?= date('M d, Y, H:i', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></p>
                                 </div>
                                 <span class="rounded-full px-3 py-1 text-xs font-bold <?= $payment['status'] === 'approved' ? 'bg-emerald-100 text-emerald-700' : ($payment['status'] === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700') ?>"><?= htmlspecialchars(ucfirst(str_replace('_', ' ', $payment['status']))) ?></span>
                             </div>
@@ -843,9 +876,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <div class="flex items-center gap-3">
                                         <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600"><i class="fa-solid fa-shield-halved"></i></span>
                                         <div class="min-w-0">
-                                            <p class="text-sm font-bold text-emerald-800">Confirmed automatically by XPay</p>
-                                            <p class="truncate text-xs text-emerald-700">Session: <?= htmlspecialchars((string) $payment['provider_session_id']) ?></p>
-                                            <p class="truncate text-xs text-emerald-700">Payment Intent: <?= htmlspecialchars((string) $payment['provider_payment_intent_id']) ?></p>
+                                            <p class="text-sm font-bold text-emerald-800">Paid online</p>
                                         </div>
                                     </div>
                                 </div>
@@ -865,15 +896,8 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     </a>
                                 </div>
                             <?php endif; ?>
-                            <?php if ($payment['status'] === 'pending_verification' && !$isSurgicalGuide): ?>
-                                <div class="flex gap-3 mt-4 border-t border-slate-200 pt-4">
-                                    <button onclick="verifyPayment(<?= $payment['id'] ?>, 'approved')" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-lg text-sm transition">Approve</button>
-                                    <button onclick="verifyPayment(<?= $payment['id'] ?>, 'rejected')" class="bg-red-50 hover:bg-red-500 text-red-600 hover:text-white border border-red-200 font-bold py-2 px-4 rounded-lg text-sm transition">Reject</button>
-                                </div>
-                            <?php elseif ($payment['status'] === 'pending_verification' && $isSurgicalGuide): ?>
-                                <div class="mt-4 border-t border-slate-200 pt-4 text-sm text-red-600">
-                                    Historical receipt only. Manual receipt review is disabled for Surgical Guide requests.
-                                </div>
+                            <?php if (($payment['payment_source'] ?? 'manual_receipt') === 'manual_receipt'): ?>
+                                <div class="mt-4 border-t border-slate-200 pt-4 text-sm text-slate-500">Legacy receipt shown for reference only. Manual review is disabled.</div>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -892,13 +916,28 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <div class="rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-500">No activity logged yet.</div>
                             <?php endif; ?>
                             <?php foreach ($activity_logs as $log): ?>
+                                <?php
+                                    $activityAction = (string) $log['action'];
+                                    $activityLabel = ucwords(str_replace('_', ' ', $activityAction));
+                                    $activityNote = (string) ($log['note'] ?? '');
+                                    $activityActor = $log['actor_name'] ?: $log['actor_role'];
+                                    if (in_array($activityAction, ['xpay_payment_confirmed', 'online_payment_confirmed'], true)) {
+                                        $activityLabel = 'Online Payment Confirmed';
+                                        $activityNote = 'Online payment completed.';
+                                        $activityActor = 'system';
+                                    } elseif (in_array($activityAction, ['xpay_payment_requires_review', 'online_payment_requires_review'], true)) {
+                                        $activityLabel = 'Online Payment Requires Review';
+                                        $activityNote = 'A completed online payment requires administrative review.';
+                                        $activityActor = 'system';
+                                    }
+                                ?>
                                 <div class="rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm">
                                     <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-1">
-                                        <p class="font-bold text-[#13324a]"><?= htmlspecialchars(ucwords(str_replace('_', ' ', $log['action']))) ?></p>
+                                        <p class="font-bold text-[#13324a]"><?= htmlspecialchars($activityLabel) ?></p>
                                         <p class="text-xs text-slate-400"><?= date('M d, Y, H:i', strtotime($log['created_at'])) ?></p>
                                     </div>
-                                    <p class="text-xs text-slate-500 mt-1">By <?= htmlspecialchars($log['actor_name'] ?: $log['actor_role']) ?><?php if ($log['old_value'] || $log['new_value']): ?> — <?= htmlspecialchars((string) $log['old_value']) ?> → <?= htmlspecialchars((string) $log['new_value']) ?><?php endif; ?></p>
-                                    <?php if (!empty($log['note'])): ?><p class="mt-2 text-slate-700"><?= nl2br(htmlspecialchars($log['note'])) ?></p><?php endif; ?>
+                                    <p class="text-xs text-slate-500 mt-1">By <?= htmlspecialchars((string) $activityActor) ?><?php if ($log['old_value'] || $log['new_value']): ?> — <?= htmlspecialchars((string) $log['old_value']) ?> → <?= htmlspecialchars((string) $log['new_value']) ?><?php endif; ?></p>
+                                    <?php if ($activityNote !== ''): ?><p class="mt-2 text-slate-700"><?= nl2br(htmlspecialchars($activityNote)) ?></p><?php endif; ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
@@ -1218,31 +1257,30 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
     });
 
     /* ════ Status / Reject functions ════ */
-    function toggleRejectionReason() {
-        const statusSelect = document.getElementById('statusSelect');
-        const reasonBox = document.getElementById('rejectionReason');
-        if (!statusSelect || !reasonBox) return;
-        const status = statusSelect.value;
-        reasonBox.classList.toggle('hidden', status !== 'rejected');
-        reasonBox.required = status === 'rejected';
-    }
-    const statusSelect = document.getElementById('statusSelect');
-    if (statusSelect) {
-        statusSelect.addEventListener('change', toggleRejectionReason);
-        toggleRejectionReason();
-    }
-
-    async function updateStatus(requestId) {
-        const newStatus = document.getElementById('statusSelect').value;
-        const reason = document.getElementById('rejectionReason').value.trim();
-        if (newStatus === 'rejected' && !reason) { alert('Rejection reason is required.'); return; }
+    document.getElementById('prepareSurgeonPaymentForm')?.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        if (!confirm('Approve this final price and request payment?')) return;
         try {
-            const body = new URLSearchParams({request_id: requestId, status: newStatus, reason});
+            const body = new URLSearchParams(new FormData(this));
+            body.set('csrf_token', requestWorkflowCsrfToken);
+            const response = await fetch('../api/prepare_surgeon_payment.php', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body.toString()});
+            const data = await response.json();
+            if (response.ok) { alert(data.success || 'Payment requested.'); location.reload(); }
+            else { alert(data.error || 'Could not request payment.'); }
+        } catch(e) { alert('Network error occurred.'); }
+    });
+
+    async function updateSurgeonStatus(requestId, newStatus) {
+        const reason = newStatus === 'rejected' ? (document.getElementById('surgeonRejectionReason')?.value.trim() || '') : '';
+        if (newStatus === 'rejected' && !reason) { alert('Rejection reason is required.'); return; }
+        if (!confirm(newStatus === 'completed' ? 'Mark this request as completed?' : 'Reject this request?')) return;
+        try {
+            const body = new URLSearchParams({request_id: requestId, status: newStatus, reason, csrf_token: requestWorkflowCsrfToken});
             const response = await fetch('../api/update_request_status.php', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body.toString()});
             const data = await response.json();
-            if (response.ok) { alert(data.success || 'Updated successfully'); location.reload(); }
-            else { alert(data.error || 'Could not update status.'); }
-        } catch(e) { alert('Network error occurred.'); }
+            if (response.ok) { alert(data.success || 'Request updated.'); location.reload(); }
+            else { alert(data.error || 'Could not update the request.'); }
+        } catch (e) { alert('Network error occurred.'); }
     }
 
     async function updateGuideStatus(requestId, newStatus) {

@@ -513,7 +513,62 @@ function getManualAdjustmentSum(PDO $pdo, int $clinicId): float
     return (float) $stmt->fetchColumn();
 }
 
-function getClinicAccountSummaryFromRows(array $rows, float $manualAdjustments = 0): array
+function getClinicOnlinePaymentTotal(PDO $pdo, int $clinicId): float
+{
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(p.amount), 0)
+        FROM payments p
+        JOIN requests r ON r.id = p.request_id
+        WHERE r.user_id = :clinic_id
+          AND r.service_type IN ('surgical_guide', 'surgeon_request')
+          AND p.status = 'approved'
+          AND p.payment_source = 'xpay'");
+    $stmt->execute([':clinic_id' => $clinicId]);
+    return (float) $stmt->fetchColumn();
+}
+
+function getClinicOnlinePayments(PDO $pdo, int $clinicId): array
+{
+    $stmt = $pdo->prepare("SELECT p.id, p.request_id, r.service_type, p.amount, p.currency, p.approved_at
+        FROM payments p
+        JOIN requests r ON r.id = p.request_id
+        WHERE r.user_id = :clinic_id
+          AND r.service_type IN ('surgical_guide', 'surgeon_request')
+          AND p.status = 'approved'
+          AND p.payment_source = 'xpay'
+        ORDER BY COALESCE(p.approved_at, p.uploaded_at) DESC, p.id DESC");
+    $stmt->execute([':clinic_id' => $clinicId]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function getClinicAwaitingPaymentAmount(PDO $pdo, int $clinicId): float
+{
+    $stmt = $pdo->prepare("SELECT COALESCE(SUM(
+            CASE
+                WHEN r.service_type = 'surgical_guide' THEN sgd.total_price
+                WHEN r.service_type = 'surgeon_request' THEN sr.total_price
+                ELSE 0
+            END
+        ), 0)
+        FROM requests r
+        LEFT JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+        LEFT JOIN surgeon_requests sr ON sr.request_id = r.id
+        WHERE r.user_id = :clinic_id
+          AND r.service_type IN ('surgical_guide', 'surgeon_request')
+          AND r.status = 'pending_payment'
+          AND NOT EXISTS (
+              SELECT 1 FROM payments p
+              WHERE p.request_id = r.id AND p.status = 'approved'
+          )");
+    $stmt->execute([':clinic_id' => $clinicId]);
+    return (float) $stmt->fetchColumn();
+}
+
+function getClinicAccountSummaryFromRows(
+    array $rows,
+    float $awaitingPayment = 0,
+    float $onlinePaid = 0,
+    float $legacyAdjustments = 0
+): array
 {
     $summary = [
         'guide_requests' => count($rows),
@@ -521,13 +576,13 @@ function getClinicAccountSummaryFromRows(array $rows, float $manualAdjustments =
         'eligible_implants' => 0,
         'free_implants' => 0,
         'total_price' => 0.0,
-        'approved_paid' => 0.0,
-        'balance_due' => 0.0,
+        'approved_paid' => $onlinePaid,
+        'awaiting_payment' => $awaitingPayment,
         'discount_amount' => 0.0,
         'print_fees' => 0.0,
         'guided_kit_rental_requests' => 0,
         'guided_kit_rental_total' => 0.0,
-        'manual_adjustments' => $manualAdjustments,
+        'manual_adjustments' => $legacyAdjustments,
         'average_implants' => 0.0,
     ];
 
@@ -538,7 +593,6 @@ function getClinicAccountSummaryFromRows(array $rows, float $manualAdjustments =
         }
         $summary['free_implants'] += (int) $row['free_implants'];
         $summary['total_price'] += (float) $row['total_price'];
-        $summary['approved_paid'] += (float) ($row['approved_amount'] ?? 0);
         $summary['discount_amount'] += (float) $row['discount_amount'];
         $summary['print_fees'] += (float) ($row['print_fee'] ?? 0);
         if (($row['guided_kit_source'] ?? '') === 'rental') {
@@ -547,7 +601,6 @@ function getClinicAccountSummaryFromRows(array $rows, float $manualAdjustments =
         }
     }
 
-    $summary['balance_due'] = $summary['total_price'] - $summary['approved_paid'] + $manualAdjustments;
     $summary['average_implants'] = $summary['guide_requests'] ? $summary['total_implants'] / $summary['guide_requests'] : 0;
 
     return $summary;
@@ -622,12 +675,18 @@ function getClinicAccount(PDO $pdo, int $clinicId): ?array
     if (!$clinic) return null;
 
     $rows = getClinicGuideRows($pdo, $clinicId);
-    $manualAdjustments = getManualAdjustmentSum($pdo, $clinicId);
+    $legacyAdjustments = getManualAdjustmentSum($pdo, $clinicId);
     $pricing = getSurgicalGuidePricing($pdo);
     return [
         'clinic' => $clinic,
-        'summary' => getClinicAccountSummaryFromRows($rows, $manualAdjustments),
+        'summary' => getClinicAccountSummaryFromRows(
+            $rows,
+            getClinicAwaitingPaymentAmount($pdo, $clinicId),
+            getClinicOnlinePaymentTotal($pdo, $clinicId),
+            $legacyAdjustments
+        ),
         'rows' => $rows,
+        'online_payments' => getClinicOnlinePayments($pdo, $clinicId),
         'reward_state' => getClinicFreeImplantState($pdo, $clinicId, (int) $pricing['free_implant_every']),
         'reward_ledger' => getClinicFreeImplantLedgerRows($pdo, $clinicId),
         'next_free_implant_every' => (int) $pricing['free_implant_every'],
@@ -641,10 +700,16 @@ function getAllClinicAccountSummaries(PDO $pdo): array
     $accounts = [];
     foreach ($clinics as $clinic) {
         $rows = getClinicGuideRows($pdo, (int) $clinic['id']);
-        $manualAdjustments = getManualAdjustmentSum($pdo, (int) $clinic['id']);
+        $clinicId = (int) $clinic['id'];
+        $legacyAdjustments = getManualAdjustmentSum($pdo, $clinicId);
         $accounts[] = [
             'clinic' => $clinic,
-            'summary' => getClinicAccountSummaryFromRows($rows, $manualAdjustments),
+            'summary' => getClinicAccountSummaryFromRows(
+                $rows,
+                getClinicAwaitingPaymentAmount($pdo, $clinicId),
+                getClinicOnlinePaymentTotal($pdo, $clinicId),
+                $legacyAdjustments
+            ),
         ];
     }
     return $accounts;

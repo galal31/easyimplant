@@ -3,6 +3,7 @@
 require_once __DIR__ . '/../includes/db_connect.php';
 define('XPAY_LOCAL_CONFIG_PATH', __DIR__ . '/xpay.local.test.php');
 require_once __DIR__ . '/../includes/xpay.php';
+require_once __DIR__ . '/../includes/surgical_guide_pricing.php';
 
 function assertXpayTest(bool $condition, string $message): void
 {
@@ -55,6 +56,51 @@ function createXpayTestSession(PDO $pdo, int $requestId, int $clinicId, string $
     ]);
 }
 
+function createXpaySurgeonRequest(PDO $pdo, int $clinicId, string $status, ?string $total, bool $requiresQuote = false): int
+{
+    $stmt = $pdo->prepare("INSERT INTO requests (user_id, service_type, status)
+        VALUES (:user_id, 'surgeon_request', :status)");
+    $stmt->execute([':user_id' => $clinicId, ':status' => $status]);
+    $requestId = (int) $pdo->lastInsertId();
+    $details = $pdo->prepare("INSERT INTO surgeon_requests
+        (request_id, service_kind, service_name_snapshot, estimated_total, total_price, currency,
+         requires_quote, patient_name, proposed_date)
+        VALUES (:request_id, :service_kind, :service_name, :estimated_total, :total_price, 'EGP',
+                :requires_quote, 'Payment Test Patient', DATE_ADD(CURDATE(), INTERVAL 7 DAY))");
+    $details->execute([
+        ':request_id' => $requestId,
+        ':service_kind' => $requiresQuote ? 'catalog_service' : 'dental_implant',
+        ':service_name' => $requiresQuote ? 'Quote Test Service' : 'Implant Test Service',
+        ':estimated_total' => $requiresQuote ? null : $total,
+        ':total_price' => $total,
+        ':requires_quote' => $requiresQuote ? 1 : 0,
+    ]);
+    return $requestId;
+}
+
+function paidXpayEvent(string $eventId, string $sessionId, int $requestId, int $clinicId, int $amountMinor, string $serviceType): array
+{
+    return [
+        'id' => $eventId,
+        'type' => 'checkout.session.completed',
+        'data' => ['object' => [
+            'id' => $sessionId,
+            'status' => 'complete',
+            'paymentStatus' => 'paid',
+            'amountTotal' => $amountMinor,
+            'currency' => 'EGP',
+            'livemode' => false,
+            'metadata' => [
+                'request_id' => (string) $requestId,
+                'clinic_id' => (string) $clinicId,
+                'service_type' => $serviceType,
+            ],
+            'paymentIntent' => ['id' => 'pi_' . $eventId],
+            'customer' => ['id' => 'cus_' . $eventId],
+        ]],
+    ];
+}
+
 $suffix = bin2hex(random_bytes(5));
 $clinicId = null;
 $requestIds = [];
@@ -95,7 +141,7 @@ try {
     createXpayTestSession($pdo, $requestId, $clinicId, $sessionId, 149900);
 
     $payload = xpayCreateCheckoutPayload(
-        ['id' => $requestId, 'user_id' => $clinicId],
+        ['id' => $requestId, 'user_id' => $clinicId, 'service_type' => 'surgical_guide'],
         ['full_name' => 'XPay Test Clinic', 'email' => 'xpay@example.test'],
         149900,
         str_repeat('a', 64)
@@ -103,9 +149,18 @@ try {
     assertXpayTest($payload['submitType'] === 'PAY', 'Checkout submitType must use the uppercase XPay API enum.');
     assertXpayTest($payload['lineItems'][0]['priceData']['unitAmount'] === 149900, 'Checkout payload must use the server-side amount in minor units.');
     assertXpayTest($payload['metadata']['request_id'] === (string) $requestId, 'Checkout payload must carry the request ID in metadata.');
-    assertXpayTest(str_contains($payload['afterCompletion']['redirect']['url'], '{CHECKOUT_SESSION_ID}'), 'Checkout return URL must include the XPay session template.');
+    assertXpayTest($payload['metadata']['service_type'] === 'surgical_guide', 'Checkout payload must carry the service type in metadata.');
+    assertXpayTest(!str_contains($payload['afterCompletion']['redirect']['url'], 'session_id'), 'The customer return URL must not expose a checkout session identifier.');
     assertXpayTest(xpayIsTrustedCheckoutUrl('https://checkout.xpay.app/c/' . $sessionId), 'The official XPay checkout host must be accepted.');
     assertXpayTest(!xpayIsTrustedCheckoutUrl('https://checkout.xpay.app.example/c/' . $sessionId), 'A lookalike checkout host must be rejected.');
+    $surgeonPayload = xpayCreateCheckoutPayload(
+        ['id' => 999, 'user_id' => $clinicId, 'service_type' => 'surgeon_request'],
+        ['full_name' => 'XPay Test Clinic', 'email' => 'xpay@example.test'],
+        10000,
+        str_repeat('b', 64)
+    );
+    assertXpayTest($surgeonPayload['metadata']['service_type'] === 'surgeon_request', 'Surgeon checkout metadata must identify the service type.');
+    assertXpayTest(str_starts_with($surgeonPayload['lineItems'][0]['priceData']['productData']['name'], 'Implant Surgeon Request'), 'Surgeon checkout must use the surgeon product name.');
 
     $eventId = 'evt_test_' . $suffix;
     $eventIds[] = $eventId;
@@ -119,7 +174,7 @@ try {
             'amountTotal' => 149900,
             'currency' => 'EGP',
             'livemode' => false,
-            'metadata' => ['request_id' => (string) $requestId, 'clinic_id' => (string) $clinicId],
+            'metadata' => ['request_id' => (string) $requestId, 'clinic_id' => (string) $clinicId, 'service_type' => 'surgical_guide'],
             'paymentIntent' => ['id' => 'pi_test_' . $suffix],
             'customer' => ['id' => 'cus_test_' . $suffix],
         ]],
@@ -142,7 +197,7 @@ try {
     assertXpayTest($result['status'] === 'paid', 'A matching paid checkout must be processed.');
     assertXpayTest($pdo->query("SELECT status FROM requests WHERE id = $requestId")->fetchColumn() === 'in_progress', 'A confirmed payment must move the request to in_progress.');
     assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM payments WHERE request_id = $requestId AND payment_source = 'xpay' AND status = 'approved'")->fetchColumn() === 1, 'A confirmed payment must create one approved XPay payment.');
-    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $requestId AND action = 'xpay_payment_confirmed'")->fetchColumn() === 1, 'A confirmed payment must create one transition log.');
+    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $requestId AND action = 'online_payment_confirmed' AND actor_role = 'system'")->fetchColumn() === 1, 'A confirmed payment must create one neutral system transition log.');
 
     $duplicate = xpayProcessWebhookEvent($pdo, $verified);
     assertXpayTest($duplicate['status'] === 'duplicate', 'The same webhook event must be ignored on replay.');
@@ -155,7 +210,7 @@ try {
     $secondResult = xpayProcessWebhookEvent($pdo, $secondEvent);
     assertXpayTest($secondResult['status'] === 'paid', 'A second paid event for the same checkout must be handled idempotently.');
     assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM payments WHERE request_id = $requestId")->fetchColumn() === 1, 'A second paid event must not create a second payment.');
-    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $requestId AND action = 'xpay_payment_confirmed'")->fetchColumn() === 1, 'A second paid event must not repeat the request transition.');
+    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $requestId AND action = 'online_payment_confirmed'")->fetchColumn() === 1, 'A second paid event must not repeat the request transition.');
 
     $mismatchRequestId = createXpayTestRequest($pdo, $clinicId, 'pending_payment', '100.00');
     $requestIds[] = $mismatchRequestId;
@@ -174,14 +229,74 @@ try {
             'amountTotal' => 9999,
             'currency' => 'EGP',
             'livemode' => false,
-            'metadata' => ['request_id' => (string) $mismatchRequestId, 'clinic_id' => (string) $clinicId],
+            'metadata' => ['request_id' => (string) $mismatchRequestId, 'clinic_id' => (string) $clinicId, 'service_type' => 'surgical_guide'],
             'paymentIntent' => ['id' => 'pi_test_mismatch_' . $suffix],
         ]],
     ];
     $mismatchResult = xpayProcessWebhookEvent($pdo, $mismatchEvent);
     assertXpayTest($mismatchResult['status'] === 'rejected', 'A mismatched paid amount must be rejected.');
     assertXpayTest($pdo->query("SELECT status FROM requests WHERE id = $mismatchRequestId")->fetchColumn() === 'pending_payment', 'A mismatched payment must not advance the request.');
+    assertXpayTest($pdo->query("SELECT payment_status FROM xpay_checkout_sessions WHERE xpay_session_id = " . $pdo->quote($mismatchSessionId))->fetchColumn() === 'unpaid', 'A rejected paid event must not mark the stored checkout as paid.');
     assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM payments WHERE request_id = $mismatchRequestId")->fetchColumn() === 0, 'A mismatched payment must not create an approved payment.');
+
+    $surgeonRequestId = createXpaySurgeonRequest($pdo, $clinicId, 'pending_payment', '2750.00');
+    $requestIds[] = $surgeonRequestId;
+    $pdo->prepare("UPDATE surgeon_requests SET estimated_total = '9999.00' WHERE request_id = :id")->execute([':id' => $surgeonRequestId]);
+    $surgeonSessionId = 'cs_test_surgeon_' . $suffix;
+    createXpayTestSession($pdo, $surgeonRequestId, $clinicId, $surgeonSessionId, 275000);
+    $surgeonEventId = 'evt_test_surgeon_' . $suffix;
+    $eventIds[] = $surgeonEventId;
+    $surgeonResult = xpayProcessWebhookEvent($pdo, paidXpayEvent($surgeonEventId, $surgeonSessionId, $surgeonRequestId, $clinicId, 275000, 'surgeon_request'));
+    assertXpayTest($surgeonResult['status'] === 'paid', 'A matching surgeon-request payment must be processed.');
+    assertXpayTest((float) $pdo->query("SELECT amount FROM payments WHERE request_id = $surgeonRequestId")->fetchColumn() === 2750.00, 'Surgeon payment must use the stored final price, not a changed estimate.');
+    assertXpayTest($pdo->query("SELECT status FROM requests WHERE id = $surgeonRequestId")->fetchColumn() === 'in_progress', 'A paid surgeon request must move to in_progress.');
+    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM payments WHERE request_id = $surgeonRequestId AND status = 'approved'")->fetchColumn() === 1, 'A surgeon-request payment must be stored once.');
+
+    $quoteRequestId = createXpaySurgeonRequest($pdo, $clinicId, 'pending_review', null, true);
+    $requestIds[] = $quoteRequestId;
+    $quoteCannotPay = false;
+    try { xpayDecimalToMinor((string) $pdo->query("SELECT total_price FROM surgeon_requests WHERE request_id = $quoteRequestId")->fetchColumn()); }
+    catch (InvalidArgumentException|DomainException) { $quoteCannotPay = true; }
+    assertXpayTest($quoteCannotPay, 'A quote-only service must not have a payable amount before price approval.');
+    $pdo->prepare("UPDATE surgeon_requests SET total_price = '900.00', price_confirmed_at = NOW() WHERE request_id = :id")->execute([':id' => $quoteRequestId]);
+    $pdo->prepare("UPDATE requests SET status = 'pending_payment' WHERE id = :id")->execute([':id' => $quoteRequestId]);
+    assertXpayTest(xpayDecimalToMinor((string) $pdo->query("SELECT total_price FROM surgeon_requests WHERE request_id = $quoteRequestId")->fetchColumn()) === 90000, 'An approved quote price must become the stored full payment amount.');
+
+    $currencyRequestId = createXpaySurgeonRequest($pdo, $clinicId, 'pending_payment', '300.00');
+    $requestIds[] = $currencyRequestId;
+    $currencySessionId = 'cs_test_currency_' . $suffix;
+    createXpayTestSession($pdo, $currencyRequestId, $clinicId, $currencySessionId, 30000);
+    $currencyEventId = 'evt_test_currency_' . $suffix;
+    $eventIds[] = $currencyEventId;
+    $currencyEvent = paidXpayEvent($currencyEventId, $currencySessionId, $currencyRequestId, $clinicId, 30000, 'surgeon_request');
+    $currencyEvent['data']['object']['currency'] = 'USD';
+    assertXpayTest(xpayProcessWebhookEvent($pdo, $currencyEvent)['status'] === 'rejected', 'A currency mismatch must be rejected.');
+
+    $serviceRequestId = createXpaySurgeonRequest($pdo, $clinicId, 'pending_payment', '400.00');
+    $requestIds[] = $serviceRequestId;
+    $serviceSessionId = 'cs_test_service_' . $suffix;
+    createXpayTestSession($pdo, $serviceRequestId, $clinicId, $serviceSessionId, 40000);
+    $serviceEventId = 'evt_test_service_' . $suffix;
+    $eventIds[] = $serviceEventId;
+    assertXpayTest(xpayProcessWebhookEvent($pdo, paidXpayEvent($serviceEventId, $serviceSessionId, $serviceRequestId, $clinicId, 40000, 'surgical_guide'))['status'] === 'rejected', 'A service-type metadata mismatch must be rejected.');
+
+    $lateRequestId = createXpaySurgeonRequest($pdo, $clinicId, 'rejected', '500.00');
+    $requestIds[] = $lateRequestId;
+    $lateSessionId = 'cs_test_late_' . $suffix;
+    createXpayTestSession($pdo, $lateRequestId, $clinicId, $lateSessionId, 50000);
+    $lateEventId = 'evt_test_late_' . $suffix;
+    $eventIds[] = $lateEventId;
+    assertXpayTest(xpayProcessWebhookEvent($pdo, paidXpayEvent($lateEventId, $lateSessionId, $lateRequestId, $clinicId, 50000, 'surgeon_request'))['status'] === 'paid', 'A valid late payment must still be recorded.');
+    assertXpayTest($pdo->query("SELECT status FROM requests WHERE id = $lateRequestId")->fetchColumn() === 'rejected', 'A late payment must not reopen a rejected request.');
+    assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $lateRequestId AND action = 'online_payment_requires_review'")->fetchColumn() === 1, 'A late payment must create a neutral review activity.');
+
+    $awaitingBefore = getClinicAwaitingPaymentAmount($pdo, $clinicId);
+    $awaitingGuideId = createXpayTestRequest($pdo, $clinicId, 'pending_payment', '125.00');
+    $requestIds[] = $awaitingGuideId;
+    $awaitingSurgeonId = createXpaySurgeonRequest($pdo, $clinicId, 'pending_payment', '225.00');
+    $requestIds[] = $awaitingSurgeonId;
+    $pdo->prepare("INSERT INTO clinic_account_adjustments (clinic_id, adjustment_type, amount, reason) VALUES (:clinic, 'debit', 999.00, 'Legacy test adjustment')")->execute([':clinic' => $clinicId]);
+    assertXpayTest(abs(getClinicAwaitingPaymentAmount($pdo, $clinicId) - $awaitingBefore - 350.00) < 0.001, 'Awaiting Payment must include both services and ignore legacy adjustments.');
 
     echo "XPay payment tests passed.\n";
 } finally {

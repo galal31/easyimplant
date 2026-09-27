@@ -78,7 +78,7 @@ try {
 
     echo json_encode([
         'success' => true,
-        'message' => 'The plan was approved. You can now pay securely through XPay.',
+        'message' => 'The plan was approved. You can now complete payment online.',
         'status' => 'pending_payment',
     ]);
 } catch (DomainException|RuntimeException $e) {

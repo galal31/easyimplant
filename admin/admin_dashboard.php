@@ -18,7 +18,7 @@ try {
         'free_implants' => 0,
         'guided_kit_rental_total' => 0,
         'approved_paid' => 0,
-        'balance_due' => 0,
+        'awaiting_payment' => 0,
     ];
 
     foreach ($clinic_accounts as $account) {
@@ -26,12 +26,12 @@ try {
         $account_stats['free_implants'] += $account['summary']['free_implants'];
         $account_stats['guided_kit_rental_total'] += $account['summary']['guided_kit_rental_total'];
         $account_stats['approved_paid'] += $account['summary']['approved_paid'];
-        $account_stats['balance_due'] += $account['summary']['balance_due'];
+        $account_stats['awaiting_payment'] += $account['summary']['awaiting_payment'];
     }
 } catch (\PDOException $e) {
     error_log("Admin Dashboard DB Error: " . $e->getMessage());
     $stats = ['pending_requests' => 0, 'awaiting_clinic_approval' => 0, 'active_clinics' => 0, 'completed_requests' => 0];
-    $account_stats = ['total_implants' => 0, 'free_implants' => 0, 'guided_kit_rental_total' => 0, 'approved_paid' => 0, 'balance_due' => 0];
+    $account_stats = ['total_implants' => 0, 'free_implants' => 0, 'guided_kit_rental_total' => 0, 'approved_paid' => 0, 'awaiting_payment' => 0];
 }
 ?>
 
@@ -118,10 +118,10 @@ try {
     </div>
     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5">
         <div class="flex items-center gap-2">
-            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Balance Due</p>
-            <button type="button" data-dashboard-card-help="balance_due" data-dashboard-card-value="<?= htmlspecialchars(formatMoney($account_stats['balance_due']), ENT_QUOTES, 'UTF-8') ?>" aria-label="شرح الرصيد المستحق" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Awaiting Payment</p>
+            <button type="button" data-dashboard-card-help="awaiting_payment" data-dashboard-card-value="<?= htmlspecialchars(formatMoney($account_stats['awaiting_payment']), ENT_QUOTES, 'UTF-8') ?>" aria-label="شرح المبالغ المنتظرة للدفع" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
         </div>
-        <p class="text-xl font-extrabold text-orange-600 mt-1"><?= formatMoney($account_stats['balance_due']) ?></p>
+        <p class="text-xl font-extrabold text-orange-600 mt-1"><?= formatMoney($account_stats['awaiting_payment']) ?></p>
     </div>
 </div>
 
@@ -190,15 +190,15 @@ const dashboardCardHelp = {
     },
     kit_rentals: {
         title: 'إيجارات الـ Guided Kit',
-        body: 'هذا الرقم هو مجموع أسعار إيجار الـ Guided Kit داخل طلبات الأدلة الجراحية غير المرفوضة لكل العيادات. هذه الأسعار موجودة بالفعل ضمن قيمة الطلبات والرصيد المستحق وليست إضافة منفصلة عليهما.'
+        body: 'هذا الرقم هو مجموع أسعار إيجار الـ Guided Kit داخل طلبات الأدلة الجراحية غير المرفوضة لكل العيادات. هذه الأسعار موجودة بالفعل ضمن قيمة طلبات الدليل وليست إضافة منفصلة.'
     },
     approved_paid: {
         title: 'المدفوع المعتمد',
-        body: 'هذا الرقم هو مجموع الأموال الموجودة في إيصالات الدفع التي راجعتها الإدارة ووافقت عليها. الإيصالات المنتظرة أو المرفوضة لا تدخل في هذا الرقم.'
+        body: 'هذا الرقم هو مجموع المدفوعات الإلكترونية المعتمدة لطلبات الدليل الجراحي وطلبات الجرّاح.'
     },
-    balance_due: {
-        title: 'الرصيد المستحق',
-        body: 'هذا الرقم هو إجمالي الأموال المتبقية على جميع العيادات. يحسب من قيمة طلبات الأدلة غير المرفوضة بما فيها إيجارات الـ Guided Kit، ثم يطرح المدفوعات المعتمدة، ويطبق أي خصم أو رسوم يدوية مسجلة داخل حساب العيادة.'
+    awaiting_payment: {
+        title: 'بانتظار الدفع',
+        body: 'هذا الرقم هو مجموع الأسعار النهائية لطلبات الدليل الجراحي وطلبات الجرّاح الموجودة حاليًا في مرحلة انتظار الدفع ولا تملك دفعة معتمدة. التسويات القديمة لا تدخل في هذا الحساب.'
     }
 };
 

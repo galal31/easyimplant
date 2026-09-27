@@ -30,7 +30,15 @@ if (!$payment_id || !in_array($action, ['approved', 'rejected'], true)) {
 try {
     $pdo->beginTransaction();
 
-    $stmt_payment = $pdo->prepare("SELECT p.request_id, p.status, r.status AS request_status, r.service_type
+    if (!requestWorkflowCsrfIsValid(trim((string) ($_POST['csrf_token'] ?? '')))) {
+        $pdo->rollBack();
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Please refresh the page and try again.']);
+        exit;
+    }
+
+    $stmt_payment = $pdo->prepare("SELECT p.request_id, p.status, p.payment_source,
+            r.status AS request_status, r.service_type
         FROM payments p
         JOIN requests r ON r.id = p.request_id
         WHERE p.id = :id
@@ -44,54 +52,9 @@ try {
         exit;
     }
 
-    $is_surgical_guide = $payment['service_type'] === 'surgical_guide';
-    if ($is_surgical_guide) {
-        $csrf_token = trim($_POST['csrf_token'] ?? '');
-        if (!requestWorkflowCsrfIsValid($csrf_token)) {
-            $pdo->rollBack();
-            http_response_code(403);
-            echo json_encode(['error' => 'Your session expired. Please refresh the page and try again.']);
-            exit;
-        }
-
-        $pdo->rollBack();
-        http_response_code(409);
-        echo json_encode(['error' => 'Manual payment receipt review is disabled for Surgical Guide requests. Historical receipts are read-only.']);
-        exit;
-    }
-
-    $stmt = $pdo->prepare("UPDATE payments SET status = :status WHERE id = :id");
-    $stmt->execute([
-        ':status' => $action,
-        ':id'     => $payment_id
-    ]);
-
-    if ($action === 'approved') {
-        $stmt_update_req = $pdo->prepare("UPDATE requests SET status = 'in_progress' WHERE id = :request_id");
-        $stmt_update_req->execute([':request_id' => $payment['request_id']]);
-
-        $stmt_log = $pdo->prepare("INSERT INTO request_activity_logs (request_id, actor_id, actor_role, action, old_value, new_value, note)
-            VALUES (:request_id, :actor_id, 'admin', 'payment_approved', :old_value, 'approved', :note)");
-        $stmt_log->execute([
-            ':request_id' => $payment['request_id'],
-            ':actor_id' => $_SESSION['user_id'],
-            ':old_value' => $payment['status'],
-            ':note' => 'Payment approved. Request moved to in_progress.'
-        ]);
-    } else {
-        $stmt_log = $pdo->prepare("INSERT INTO request_activity_logs (request_id, actor_id, actor_role, action, old_value, new_value, note)
-            VALUES (:request_id, :actor_id, 'admin', 'payment_rejected', :old_value, 'rejected', :note)");
-        $stmt_log->execute([
-            ':request_id' => $payment['request_id'],
-            ':actor_id' => $_SESSION['user_id'],
-            ':old_value' => $payment['status'],
-            ':note' => $reason ?: 'Payment receipt rejected.'
-        ]);
-    }
-
-    $pdo->commit();
-    http_response_code(200);
-    echo json_encode(['success' => 'Payment receipt ' . $action . ' successfully.']);
+    $pdo->rollBack();
+    http_response_code(409);
+    echo json_encode(['error' => 'Manual payment receipt review is disabled.']);
 
 } catch (\PDOException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();

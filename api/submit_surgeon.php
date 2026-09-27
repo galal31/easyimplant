@@ -252,18 +252,19 @@ try {
             request_id, service_kind, surgeon_service_id, service_name_snapshot, implant_package,
             implant_count, implant_type_id, implant_type_name_snapshot, implant_provider,
             doctor_fee_per_implant, doctor_fee_total, team_fee_total, implant_unit_price,
-            implant_cost_total, travel_price, estimated_total, currency, requires_quote,
+            implant_cost_total, travel_price, estimated_total, total_price, currency, requires_quote,
             patient_name, patient_age, medical_history, proposed_date, notes
         ) VALUES (
             :request_id, :service_kind, :surgeon_service_id, :service_name_snapshot, :implant_package,
             :implant_count, :implant_type_id, :implant_type_name_snapshot, :implant_provider,
             :doctor_fee_per_implant, :doctor_fee_total, :team_fee_total, :implant_unit_price,
-            :implant_cost_total, :travel_price, :estimated_total, :currency, :requires_quote,
+            :implant_cost_total, :travel_price, :estimated_total, :total_price, :currency, :requires_quote,
             :patient_name, :patient_age, :medical_history, :proposed_date, :notes
         )
     ");
     $detailsStmt->execute(array_merge($requestData, [
         'request_id' => $requestId, 'patient_name' => $patientName, 'patient_age' => $patientAge,
+        'total_price' => !empty($requestData['requires_quote']) ? null : $requestData['estimated_total'],
         'medical_history' => $medicalHistory, 'proposed_date' => $proposedDate,
         'notes' => $notes !== '' ? $notes : null,
     ]));

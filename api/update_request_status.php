@@ -46,16 +46,17 @@ try {
 
     $old_status = $request['status'];
     $is_surgical_guide = $request['service_type'] === 'surgical_guide';
+    $is_surgeon_request = $request['service_type'] === 'surgeon_request';
+
+    $csrf_token = trim($_POST['csrf_token'] ?? '');
+    if (!requestWorkflowCsrfIsValid($csrf_token)) {
+        $pdo->rollBack();
+        http_response_code(403);
+        echo json_encode(['error' => 'Your session expired. Please refresh the page and try again.']);
+        exit;
+    }
 
     if ($is_surgical_guide) {
-        $csrf_token = trim($_POST['csrf_token'] ?? '');
-        if (!requestWorkflowCsrfIsValid($csrf_token)) {
-            $pdo->rollBack();
-            http_response_code(403);
-            echo json_encode(['error' => 'Your session expired. Please refresh the page and try again.']);
-            exit;
-        }
-
         if (!surgicalGuideTransitionIsAllowed($old_status, $status, 'admin')) {
             $pdo->rollBack();
             http_response_code(409);
@@ -77,26 +78,54 @@ try {
             if ($activeCheckoutStmt->fetchColumn()) {
                 $pdo->rollBack();
                 http_response_code(409);
-                echo json_encode(['error' => 'This request has an active XPay checkout. Wait for it to expire before rejecting the request.']);
+                echo json_encode(['error' => 'This request has an active payment session. Wait for it to expire before rejecting the request.']);
                 exit;
             }
         }
-    } elseif ($status === 'rejected' && $reason === '') {
-        // Keep the existing surgeon-request behavior unchanged.
+    } elseif ($is_surgeon_request) {
+        if (!surgeonRequestTransitionIsAllowed($old_status, $status, 'admin')) {
+            $pdo->rollBack();
+            http_response_code(409);
+            echo json_encode(['error' => 'This status change is not allowed from the current request step. Please refresh the page.']);
+            exit;
+        }
+        if ($status === 'rejected' && $reason === '') {
+            $pdo->rollBack();
+            http_response_code(400);
+            echo json_encode(['error' => 'Rejection reason is required.']);
+            exit;
+        }
+        if ($old_status === 'pending_payment' && $status === 'rejected') {
+            $activeCheckoutStmt = $pdo->prepare("SELECT id FROM xpay_checkout_sessions
+                WHERE request_id = :request_id
+                  AND payment_status <> 'paid'
+                  AND status IN ('creating', 'open')
+                  AND ((expires_at IS NOT NULL AND expires_at > UTC_TIMESTAMP())
+                    OR (expires_at IS NULL AND created_at > UTC_TIMESTAMP() - INTERVAL 30 MINUTE))
+                LIMIT 1");
+            $activeCheckoutStmt->execute([':request_id' => $request_id]);
+            if ($activeCheckoutStmt->fetchColumn()) {
+                $pdo->rollBack();
+                http_response_code(409);
+                echo json_encode(['error' => 'This request has an active payment session. Wait for it to expire before rejecting the request.']);
+                exit;
+            }
+        }
+    } else {
         $pdo->rollBack();
-        http_response_code(400);
-        echo json_encode(['error' => 'Rejection reason is required.']);
+        http_response_code(409);
+        echo json_encode(['error' => 'This request type is not supported.']);
         exit;
     }
 
     if ($status === 'rejected') {
         if ($is_surgical_guide) {
             releaseClinicFreeImplantReservation($pdo, (int) $request_id);
-            $stmt_pending_payments = $pdo->prepare("UPDATE payments
-                SET status = 'rejected'
-                WHERE request_id = :request_id AND status = 'pending_verification'");
-            $stmt_pending_payments->execute([':request_id' => $request_id]);
         }
+        $stmt_pending_payments = $pdo->prepare("UPDATE payments
+            SET status = 'rejected'
+            WHERE request_id = :request_id AND status = 'pending_verification'");
+        $stmt_pending_payments->execute([':request_id' => $request_id]);
 
         $stmt = $pdo->prepare("UPDATE requests
             SET status = :status,

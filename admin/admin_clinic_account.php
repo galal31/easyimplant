@@ -18,6 +18,7 @@ if (!$account) die('Clinic not found.');
 $clinic = $account['clinic'];
 $summary = $account['summary'];
 $rows = $account['rows'];
+$onlinePayments = $account['online_payments'] ?? [];
 $adjustments = $account['adjustments'] ?? [];
 $freeHistory = $account['reward_ledger'] ?? [];
 $rewardState = $account['reward_state'] ?? [];
@@ -28,6 +29,7 @@ $confirmedRewardRows = array_values(array_filter($freeHistory, static fn(array $
 $completedFreeImplants = array_sum(array_map(static fn(array $entry): int => (int) $entry['free_implants'], $confirmedRewardRows));
 
 $historyTable = adminTableState($rows, ['request_id', 'request_status', 'implant_type_name', 'delivery_method', 'guided_kit_source', 'guided_kit_name', 'guided_kit_type', 'guided_kit_rental_price', 'latest_payment_status', 'created_at'], 'guide_history');
+$onlinePaymentsTable = adminTableState($onlinePayments, ['request_id', 'service_type', 'amount', 'currency', 'approved_at'], 'online_payments');
 $adjustmentsTable = adminTableState($adjustments, ['adjustment_type', 'amount', 'reason', 'admin_name', 'created_at'], 'adjustments');
 $freeHistoryTable = adminTableState($freeHistory, ['request_id', 'created_at', 'status', 'active_free_implant_every_before', 'progress_before', 'progress_after', 'active_free_implant_every_after', 'total_implants', 'free_implants'], 'free_history');
 $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'request_count', 'implant_count', 'revenue', 'is_other'], 'clinic_implant_usage');
@@ -65,16 +67,27 @@ $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'reques
             <button type="button" data-account-card-help="approved_paid" data-account-card-value="<?= htmlspecialchars(formatMoney($summary['approved_paid']), ENT_QUOTES, 'UTF-8') ?>" aria-label="شرح المدفوع المعتمد" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
         </div>
         <p class="mt-1 text-2xl font-extrabold text-emerald-600"><?= formatMoney($summary['approved_paid']) ?></p>
-        <p class="mt-2 text-xs text-slate-500">Approved payment receipts only</p>
+        <p class="mt-2 text-xs text-slate-500">Approved online payments for both services</p>
     </div>
     <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div class="flex items-center gap-2">
-            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Balance Due</p>
-            <button type="button" data-account-card-help="balance_due" data-account-card-value="<?= htmlspecialchars(formatMoney($summary['balance_due']), ENT_QUOTES, 'UTF-8') ?>" aria-label="شرح الرصيد المستحق" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Awaiting Payment</p>
+            <button type="button" data-account-card-help="awaiting_payment" data-account-card-value="<?= htmlspecialchars(formatMoney($summary['awaiting_payment']), ENT_QUOTES, 'UTF-8') ?>" aria-label="شرح المبالغ المنتظرة للدفع" class="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-xs font-bold text-slate-500 transition hover:border-[#1d5f8c] hover:bg-[#1d5f8c] hover:text-white">?</button>
         </div>
-        <p class="mt-1 text-2xl font-extrabold <?= $summary['balance_due'] > 0 ? 'text-orange-600' : 'text-emerald-600' ?>"><?= formatMoney($summary['balance_due']) ?></p>
-        <p class="mt-2 text-xs text-slate-500">Includes <?= formatMoney($summary['manual_adjustments'] ?? 0) ?> adjustments</p>
+        <p class="mt-1 text-2xl font-extrabold <?= $summary['awaiting_payment'] > 0 ? 'text-orange-600' : 'text-emerald-600' ?>"><?= formatMoney($summary['awaiting_payment']) ?></p>
+        <p class="mt-2 text-xs text-slate-500">Pending-payment requests without an approved payment</p>
     </div>
+</div>
+
+<div class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <div class="border-b border-slate-100 bg-slate-50 px-6 py-5"><h3 class="text-lg font-bold text-[#13324a]">Approved Online Payments</h3><p class="mt-1 text-sm text-slate-500">Completed payments for Surgical Guide and Surgeon Request services.</p></div>
+    <?php adminTableToolbar('online_payments', $onlinePaymentsTable, 'Search online payments...'); ?>
+    <div class="overflow-x-auto"><table class="w-full whitespace-nowrap text-left text-sm"><thead class="border-b-2 border-slate-100 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500"><tr><th class="px-6 py-4">Request</th><th class="px-6 py-4">Service</th><th class="px-6 py-4">Amount</th><th class="px-6 py-4">Completed</th></tr></thead>
+        <tbody class="divide-y divide-slate-100 text-slate-700" data-admin-table-body="online_payments">
+            <?php if (!$onlinePaymentsTable['rows']): ?><tr><td colspan="4" class="px-6 py-10 text-center text-slate-500">No approved online payments yet.</td></tr><?php endif; ?>
+            <?php foreach ($onlinePaymentsTable['rows'] as $onlinePayment): ?><tr><td class="px-6 py-4"><a href="admin_view_request.php?id=<?= (int) $onlinePayment['request_id'] ?>" class="font-bold text-[#1d5f8c] hover:underline">#<?= str_pad($onlinePayment['request_id'], 5, '0', STR_PAD_LEFT) ?></a></td><td class="px-6 py-4 font-semibold"><?= $onlinePayment['service_type'] === 'surgeon_request' ? 'Surgeon Request' : 'Surgical Guide' ?></td><td class="px-6 py-4 font-extrabold text-emerald-600"><?= formatCurrencyMoney($onlinePayment['amount'], $onlinePayment['currency']) ?></td><td class="px-6 py-4 text-slate-500"><?= date('M d, Y H:i', strtotime($onlinePayment['approved_at'])) ?></td></tr><?php endforeach; ?>
+        </tbody></table></div>
+    <?php adminTablePagination('online_payments', $onlinePaymentsTable); ?>
 </div>
 
 <div class="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -111,13 +124,13 @@ $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'reques
 
 <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
     <div class="flex gap-2 overflow-x-auto border-b border-slate-100 bg-slate-50 px-4 pt-4">
-        <button type="button" data-account-tab="adjustments" class="account-tab whitespace-nowrap rounded-t-xl bg-[#13324a] px-5 py-3 text-sm font-bold text-white">Balance Adjustments</button>
+        <button type="button" data-account-tab="adjustments" class="account-tab whitespace-nowrap rounded-t-xl bg-[#13324a] px-5 py-3 text-sm font-bold text-white">Legacy Adjustments</button>
         <button type="button" data-account-tab="free-history" class="account-tab whitespace-nowrap rounded-t-xl px-5 py-3 text-sm font-bold text-slate-500 transition hover:bg-white hover:text-[#13324a]">Implant & Free History</button>
         <button type="button" data-account-tab="implant-usage" class="account-tab whitespace-nowrap rounded-t-xl px-5 py-3 text-sm font-bold text-slate-500 transition hover:bg-white hover:text-[#13324a]">Implant Type Usage</button>
     </div>
 
     <section data-account-panel="adjustments">
-        <div class="flex flex-col gap-3 border-b border-slate-100 px-6 py-5 sm:flex-row sm:items-center sm:justify-between"><div><h3 class="text-lg font-bold text-[#13324a]">Balance Adjustments</h3><p class="mt-1 text-sm text-slate-500">Manual discounts and extra charges recorded by admins.</p></div><button type="button" data-adjustment-modal-open class="inline-flex items-center justify-center rounded-xl bg-[#13324a] px-4 py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5f8c]"><i class="fa-solid fa-plus-minus mr-2"></i> Add Adjustment</button></div>
+        <div class="border-b border-slate-100 px-6 py-5"><h3 class="text-lg font-bold text-[#13324a]">Legacy Adjustments</h3><p class="mt-1 text-sm text-slate-500">Historical manual discounts and charges. Read-only and excluded from current payment totals.</p></div>
         <?php adminTableToolbar('adjustments', $adjustmentsTable, 'Search adjustments...'); ?>
         <div class="overflow-x-auto"><table class="w-full text-left text-sm"><thead class="border-b-2 border-slate-100 bg-white text-[11px] font-semibold uppercase tracking-wider text-slate-500"><tr><th class="px-6 py-4">Date</th><th class="px-6 py-4">Type</th><th class="px-6 py-4">Amount</th><th class="px-6 py-4">Reason</th><th class="px-6 py-4">Admin</th></tr></thead>
             <tbody class="divide-y divide-slate-100 text-slate-700" data-admin-table-body="adjustments">
@@ -194,19 +207,6 @@ $clinicUsageTable = adminTableState($implantUsage, ['implant_type_name', 'reques
     </div>
 </div>
 
-<div id="adjustmentModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="adjustmentModalTitle">
-    <div class="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div class="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-6 py-4"><div><h3 id="adjustmentModalTitle" class="text-lg font-bold text-[#13324a]">Add Balance Adjustment</h3><p class="mt-1 text-xs text-slate-500">Record a discount or an extra charge with its reason.</p></div><button type="button" data-adjustment-modal-close class="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-200 hover:text-slate-700" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></div>
-        <form id="adjustmentForm" class="space-y-4 p-6">
-            <input type="hidden" name="clinic_id" value="<?= (int) $clinic['id'] ?>">
-            <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Type</label><select name="adjustment_type" required class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a] focus:border-[#1d5f8c] focus:ring-2 focus:ring-[#1d5f8c]"><option value="credit">Credit / Discount - reduce balance</option><option value="debit">Debit / Extra charge - increase balance</option></select></div>
-            <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Amount</label><input type="number" step="0.01" min="0.01" name="amount" required class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a] focus:border-[#1d5f8c] focus:ring-2 focus:ring-[#1d5f8c]" placeholder="Example: 500"></div>
-            <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Reason</label><textarea name="reason" rows="3" required class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a] focus:border-[#1d5f8c] focus:ring-2 focus:ring-[#1d5f8c]" placeholder="Write why this adjustment is needed"></textarea></div>
-            <div class="flex justify-end gap-3 border-t border-slate-100 pt-4"><button type="button" data-adjustment-modal-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200">Cancel</button><button type="submit" class="rounded-xl bg-[#13324a] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#1d5f8c]"><i class="fa-solid fa-floppy-disk mr-2"></i>Save Adjustment</button></div>
-        </form>
-    </div>
-</div>
-
 <script>
 const clinicAccountCardHelp = {
     orders_value: {
@@ -215,15 +215,15 @@ const clinicAccountCardHelp = {
     },
     kit_rentals: {
         title: 'إيجارات الـ Guided Kit',
-        body: 'هذا الرقم هو مجموع أسعار إيجار الـ Guided Kit المحفوظة داخل طلبات الأدلة الجراحية غير المرفوضة لهذه العيادة. هو جزء من قيمة الطلبات والرصيد المستحق وليس رسومًا مضافة مرة ثانية.'
+        body: 'هذا الرقم هو مجموع أسعار إيجار الـ Guided Kit المحفوظة داخل طلبات الأدلة الجراحية غير المرفوضة لهذه العيادة. هو جزء من قيمة طلب الدليل وليس رسومًا مضافة مرة ثانية.'
     },
     approved_paid: {
         title: 'المدفوع المعتمد',
-        body: 'هذا الرقم هو مجموع مبالغ إيصالات الدفع التي راجعتها الإدارة ووافقت عليها لطلبات الأدلة غير المرفوضة الخاصة بهذه العيادة. الإيصالات المنتظرة أو المرفوضة لا تدخل في الرقم.'
+        body: 'هذا الرقم هو مجموع المدفوعات الإلكترونية المعتمدة لطلبات الدليل الجراحي وطلبات الجرّاح الخاصة بهذه العيادة.'
     },
-    balance_due: {
-        title: 'الرصيد المستحق',
-        body: 'هذا الرقم هو قيمة الطلبات غير المرفوضة، بما فيها إيجارات الـ Guided Kit، ناقص المدفوعات المعتمدة، مع تطبيق التسويات اليدوية. الخصم أو التسوية الدائنة تقلل الرصيد، والرسوم أو التسوية المدينة تزيده.'
+    awaiting_payment: {
+        title: 'بانتظار الدفع',
+        body: 'هذا الرقم هو مجموع الأسعار النهائية لطلبات الدليل الجراحي وطلبات الجرّاح الموجودة في انتظار الدفع ولا تملك دفعة معتمدة. التسويات القديمة لا تدخل في الحساب.'
     },
     completed_orders: {
         title: 'الطلبات المكتملة',
@@ -271,9 +271,6 @@ accountTabs.forEach((button) => button.addEventListener('click', () => {
     accountPanels.forEach((panel) => panel.classList.toggle('hidden', panel.dataset.accountPanel !== button.dataset.accountTab));
 }));
 
-const adjustmentModal = document.getElementById('adjustmentModal');
-function openAdjustmentModal() { adjustmentModal?.classList.remove('hidden'); adjustmentModal?.classList.add('flex'); document.body.classList.add('overflow-hidden'); }
-function closeAdjustmentModal() { adjustmentModal?.classList.add('hidden'); adjustmentModal?.classList.remove('flex'); document.body.classList.remove('overflow-hidden'); }
 document.addEventListener('click', (event) => {
     const helpButton = event.target.closest('[data-account-card-help]');
     if (helpButton) {
@@ -284,27 +281,11 @@ document.addEventListener('click', (event) => {
         closeClinicAccountCardHelp();
         return;
     }
-    if (event.target.closest('[data-adjustment-modal-open]')) openAdjustmentModal();
-    if (event.target.closest('[data-adjustment-modal-close]') || event.target === adjustmentModal) closeAdjustmentModal();
 });
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
         closeClinicAccountCardHelp();
-        closeAdjustmentModal();
     }
-});
-
-document.getElementById('adjustmentForm')?.addEventListener('submit', async function(event) {
-    event.preventDefault();
-    if (!confirm('Save this financial adjustment?')) return;
-    const body = new URLSearchParams(new FormData(this));
-    try {
-        const response = await fetch('../api/save_clinic_adjustment.php', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body.toString()});
-        const data = await response.json();
-        if (!response.ok) return alert(data.error || 'Could not save adjustment.');
-        alert(data.success || 'Adjustment saved.');
-        location.reload();
-    } catch (error) { alert('Network error occurred.'); }
 });
 </script>
 

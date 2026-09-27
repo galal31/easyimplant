@@ -5,7 +5,6 @@ require_once 'includes/db_connect.php';
 require_once 'includes/surgical_guide_pricing.php';
 
 $token = trim((string) ($_GET['token'] ?? ''));
-$sessionId = trim((string) ($_GET['session_id'] ?? ''));
 $returnState = trim((string) ($_GET['state'] ?? ''));
 $checkout = null;
 
@@ -13,10 +12,6 @@ if (preg_match('/^[a-f0-9]{64}$/', $token)) {
     $sql = 'SELECT request_id, user_id, xpay_session_id, status, payment_status, amount_minor, currency
         FROM xpay_checkout_sessions WHERE return_token = :token';
     $params = [':token' => $token];
-    if ($sessionId !== '') {
-        $sql .= ' AND xpay_session_id = :session_id';
-        $params[':session_id'] = $sessionId;
-    }
     $stmt = $pdo->prepare($sql . ' LIMIT 1');
     $stmt->execute($params);
     $checkout = $stmt->fetch();
@@ -45,15 +40,15 @@ $requestUrl = $checkout ? 'view_request.php?id=' . (int) $checkout['request_id']
             <?php elseif ($isPaid): ?>
                 <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 text-2xl text-emerald-600">✓</div>
                 <h1 class="text-2xl font-extrabold text-[#13324a]">Payment confirmed</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-500">XPay confirmed your payment for request #<?= (int) $checkout['request_id'] ?>. The request is now ready for production.</p>
+                <p class="mt-3 text-sm leading-6 text-slate-500">Payment completed. Request #<?= (int) $checkout['request_id'] ?> is now in progress.</p>
             <?php elseif ($isFailed): ?>
                 <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 text-2xl text-amber-600">×</div>
                 <h1 class="text-2xl font-extrabold text-[#13324a]">Payment was not completed</h1>
                 <p class="mt-3 text-sm leading-6 text-slate-500">No payment was confirmed. You can return to the request and start a new attempt.</p>
             <?php else: ?>
                 <div class="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-2xl text-blue-600">…</div>
-                <h1 class="text-2xl font-extrabold text-[#13324a]">Payment is being confirmed</h1>
-                <p class="mt-3 text-sm leading-6 text-slate-500">Your checkout has returned to Easy Implant. The request will update only after XPay sends the signed confirmation.</p>
+                <h1 class="text-2xl font-extrabold text-[#13324a]">Payment is being verified</h1>
+                <p class="mt-3 text-sm leading-6 text-slate-500">Payment is being verified. Return to the request shortly.</p>
             <?php endif; ?>
 
             <?php if ($checkout): ?>

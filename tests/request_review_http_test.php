@@ -263,9 +263,9 @@ try {
         $approvedPage['status'] === 200
             && !str_contains($approvedPage['body'], 'id="approveReviewButton"')
             && !str_contains($approvedPage['body'], 'Upload Receipt')
-            && str_contains($approvedPage['body'], 'Pay the approved request total securely through XPay')
-            && str_contains($approvedPage['body'], 'Production starts only after XPay confirms the payment'),
-        'Approved page must remove approval/manual receipt actions and explain the XPay confirmation step.'
+            && str_contains($approvedPage['body'], 'Complete the full payment online')
+            && !str_contains($approvedPage['body'], 'XPay'),
+        'Approved page must remove manual receipt actions and use neutral online-payment wording.'
     );
 
     $activeCheckoutStmt = $pdo->prepare("INSERT INTO xpay_checkout_sessions
@@ -290,7 +290,7 @@ try {
     ]]);
     $rejectDuringCheckoutBody = file_get_contents('http://127.0.0.1/easyimplant/api/update_request_status.php', false, $rejectDuringCheckoutContext);
     $rejectDuringCheckoutStatus = finalHttpStatus($http_response_header ?? []);
-    assertHttpTest($rejectDuringCheckoutStatus === 409 && str_contains((string) $rejectDuringCheckoutBody, 'active XPay checkout'), 'An active XPay checkout must block request rejection.');
+    assertHttpTest($rejectDuringCheckoutStatus === 409 && str_contains((string) $rejectDuringCheckoutBody, 'active payment session'), 'An active payment session must block request rejection.');
     assertHttpTest($pdo->query("SELECT status FROM requests WHERE id = $reviewRequestId")->fetchColumn() === 'pending_payment', 'Blocked rejection must leave the request in pending_payment.');
     $pdo->prepare('DELETE FROM xpay_checkout_sessions WHERE request_id = :request_id')->execute([':request_id' => $reviewRequestId]);
 
@@ -308,7 +308,7 @@ try {
     ]]);
     $uploadBody = file_get_contents('http://127.0.0.1/easyimplant/api/upload_receipt.php', false, $uploadContext);
     $uploadStatus = finalHttpStatus($http_response_header ?? []);
-    assertHttpTest($uploadStatus === 409 && str_contains((string) $uploadBody, 'Manual payment receipts are disabled'), 'Surgical Guide receipt uploads must be blocked server-side.');
+    assertHttpTest($uploadStatus === 409 && str_contains((string) $uploadBody, 'New manual payment receipts are disabled'), 'Surgical Guide receipt uploads must be blocked server-side.');
 
     $verifyContext = stream_context_create(['http' => [
         'method' => 'POST', 'ignore_errors' => true,
@@ -317,19 +317,90 @@ try {
     ]]);
     $verifyBody = file_get_contents('http://127.0.0.1/easyimplant/api/verify_receipt.php', false, $verifyContext);
     $verifyStatus = finalHttpStatus($http_response_header ?? []);
-    assertHttpTest($verifyStatus === 409 && str_contains((string) $verifyBody, 'Historical receipts are read-only'), 'Surgical Guide receipt approval must be blocked server-side.');
+    assertHttpTest($verifyStatus === 409 && str_contains((string) $verifyBody, 'Manual payment receipt review is disabled'), 'Manual receipt review must be blocked server-side.');
 
     $requestStmt->execute([':user' => $clinicId, ':type' => 'surgeon_request', ':status' => 'pending_review']);
     $surgeonRequestId = (int) $pdo->lastInsertId();
     $requestIds[] = $surgeonRequestId;
+    $pdo->prepare("INSERT INTO surgeon_requests
+        (request_id, service_kind, service_name_snapshot, currency, requires_quote, patient_name, proposed_date)
+        VALUES (:request_id, 'catalog_service', 'HTTP Quote Service', 'EGP', 1, 'HTTP Test Patient', DATE_ADD(CURDATE(), INTERVAL 7 DAY))")
+        ->execute([':request_id' => $surgeonRequestId]);
+    $surgeonAdminPage = localHttp('GET', "admin/admin_view_request.php?id=$surgeonRequestId", $adminSession);
+    assertHttpTest($surgeonAdminPage['status'] === 200 && str_contains($surgeonAdminPage['body'], 'Request Payment') && str_contains($surgeonAdminPage['body'], 'Final price (EGP)'), 'Quote-only surgeon requests must render the protected final-price action.');
     $surgeonContext = stream_context_create(['http' => [
         'method' => 'POST', 'ignore_errors' => true,
         'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
-        'content' => http_build_query(['request_id' => $surgeonRequestId, 'status' => 'pending_payment']),
+        'content' => http_build_query(['request_id' => $surgeonRequestId, 'status' => 'pending_payment', 'csrf_token' => $adminToken]),
     ]]);
     file_get_contents('http://127.0.0.1/easyimplant/api/update_request_status.php', false, $surgeonContext);
     $surgeonStatus = finalHttpStatus($http_response_header ?? []);
-    assertHttpTest($surgeonStatus === 200, 'The existing surgeon-request status API behavior must remain unchanged.');
+    assertHttpTest(in_array($surgeonStatus, [400, 409], true), 'Admin must not move a surgeon request to pending_payment through the free status API.');
+
+    $prepareContext = stream_context_create(['http' => [
+        'method' => 'POST', 'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
+        'content' => http_build_query(['request_id' => $surgeonRequestId, 'total_price' => '1234.56', 'csrf_token' => $adminToken]),
+    ]]);
+    $prepareBody = file_get_contents('http://127.0.0.1/easyimplant/api/prepare_surgeon_payment.php', false, $prepareContext);
+    $prepareStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest($prepareStatus === 200, 'Admin must be able to approve a quote-only surgeon price. Response: ' . $prepareBody);
+    assertHttpTest($pdo->query("SELECT status FROM requests WHERE id = $surgeonRequestId")->fetchColumn() === 'pending_payment', 'Price approval must move the surgeon request to pending_payment.');
+    assertHttpTest($pdo->query("SELECT total_price FROM surgeon_requests WHERE request_id = $surgeonRequestId")->fetchColumn() === '1234.56', 'Quote approval must store the final price on the request.');
+    $surgeonClinicPage = localHttp('GET', "view_request.php?id=$surgeonRequestId", $clinicSession);
+    assertHttpTest(
+        $surgeonClinicPage['status'] === 200
+            && str_contains($surgeonClinicPage['body'], 'Online payment')
+            && str_contains($surgeonClinicPage['body'], '1,234.56 EGP')
+            && !str_contains($surgeonClinicPage['body'], 'Upload Receipt')
+            && !str_contains($surgeonClinicPage['body'], 'XPay'),
+        'A payable surgeon request must show the final price with neutral payment wording and no receipt action.'
+    );
+
+    $surgeonInProgressContext = stream_context_create(['http' => [
+        'method' => 'POST', 'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
+        'content' => http_build_query(['request_id' => $surgeonRequestId, 'status' => 'in_progress', 'csrf_token' => $adminToken]),
+    ]]);
+    file_get_contents('http://127.0.0.1/easyimplant/api/update_request_status.php', false, $surgeonInProgressContext);
+    $surgeonInProgressStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest(in_array($surgeonInProgressStatus, [400, 409], true), 'Admin must not move a pending-payment surgeon request to in_progress.');
+
+    $activeCheckoutStmt->execute([
+        ':request_id' => $surgeonRequestId,
+        ':user_id' => $clinicId,
+        ':idempotency_key' => 'http-surgeon-test-' . $suffix,
+        ':return_token' => hash('sha256', 'http-surgeon-return-' . $suffix),
+        ':session_id' => 'cs_test_http_surgeon_' . $suffix,
+        ':checkout_url' => 'https://checkout.xpay.app/c/cs_test_http_surgeon_' . $suffix,
+    ]);
+    $surgeonRejectContext = stream_context_create(['http' => [
+        'method' => 'POST', 'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
+        'content' => http_build_query(['request_id' => $surgeonRequestId, 'status' => 'rejected', 'reason' => 'Test rejection', 'csrf_token' => $adminToken]),
+    ]]);
+    $surgeonRejectBody = file_get_contents('http://127.0.0.1/easyimplant/api/update_request_status.php', false, $surgeonRejectContext);
+    $surgeonRejectStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest($surgeonRejectStatus === 409 && str_contains((string) $surgeonRejectBody, 'active payment session'), 'An active surgeon payment session must block rejection.');
+    $pdo->prepare('DELETE FROM xpay_checkout_sessions WHERE request_id = :request_id')->execute([':request_id' => $surgeonRequestId]);
+
+    $surgeonUploadContext = stream_context_create(['http' => [
+        'method' => 'POST', 'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$clinicSession",
+        'content' => http_build_query(['request_id' => $surgeonRequestId, 'amount' => '1.00']),
+    ]]);
+    $surgeonUploadBody = file_get_contents('http://127.0.0.1/easyimplant/api/upload_receipt.php', false, $surgeonUploadContext);
+    $surgeonUploadStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest($surgeonUploadStatus === 409 && str_contains((string) $surgeonUploadBody, 'New manual payment receipts are disabled'), 'Surgeon receipt uploads must return HTTP 409.');
+
+    $adjustmentContext = stream_context_create(['http' => [
+        'method' => 'POST', 'ignore_errors' => true,
+        'header' => "Content-Type: application/x-www-form-urlencoded\r\nCookie: PHPSESSID=$adminSession",
+        'content' => http_build_query(['clinic_id' => $clinicId, 'adjustment_type' => 'debit', 'amount' => '10.00', 'reason' => 'Must be blocked']),
+    ]]);
+    $adjustmentBody = file_get_contents('http://127.0.0.1/easyimplant/api/save_clinic_adjustment.php', false, $adjustmentContext);
+    $adjustmentStatus = finalHttpStatus($http_response_header ?? []);
+    assertHttpTest($adjustmentStatus === 409 && str_contains((string) $adjustmentBody, 'New account adjustments are disabled'), 'New clinic adjustments must be blocked server-side.');
 
     echo "Surgical Guide review HTTP tests passed.\n";
 } finally {

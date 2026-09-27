@@ -100,8 +100,7 @@ function xpayBuildReturnUrl(string $returnToken): string
 {
     $baseUrl = xpayConfig()['app_url'];
 
-    return $baseUrl . '/xpay_return?token=' . rawurlencode($returnToken)
-        . '&session_id={CHECKOUT_SESSION_ID}';
+    return $baseUrl . '/xpay_return?token=' . rawurlencode($returnToken);
 }
 
 function xpayBuildCancelUrl(string $returnToken): string
@@ -113,6 +112,17 @@ function xpayBuildCancelUrl(string $returnToken): string
 
 function xpayCreateCheckoutPayload(array $request, array $clinic, int $amountMinor, string $returnToken): array
 {
+    $serviceType = (string) ($request['service_type'] ?? 'surgical_guide');
+    if (!in_array($serviceType, ['surgical_guide', 'surgeon_request'], true)) {
+        throw new InvalidArgumentException('Unsupported payment service type.');
+    }
+    $productName = $serviceType === 'surgeon_request'
+        ? 'Implant Surgeon Request'
+        : 'Surgical Guide Request';
+    $description = $serviceType === 'surgeon_request'
+        ? 'Easy Implant surgeon service'
+        : 'Easy Implant surgical guide service';
+
     return [
         'mode' => 'payment',
         'uiMode' => 'hosted',
@@ -132,8 +142,8 @@ function xpayCreateCheckoutPayload(array $request, array $clinic, int $amountMin
                 'currency' => 'EGP',
                 'unitAmount' => $amountMinor,
                 'productData' => [
-                    'name' => 'Surgical Guide Request #' . (int) $request['id'],
-                    'description' => 'Easy Implant surgical guide service',
+                    'name' => $productName . ' #' . (int) $request['id'],
+                    'description' => $description,
                 ],
             ],
             'quantity' => 1,
@@ -141,6 +151,7 @@ function xpayCreateCheckoutPayload(array $request, array $clinic, int $amountMin
         'metadata' => [
             'request_id' => (string) (int) $request['id'],
             'clinic_id' => (string) (int) $request['user_id'],
+            'service_type' => $serviceType,
         ],
         'expiresAfterMinutes' => 30,
     ];
@@ -306,25 +317,31 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
 
         $sessionStatus = trim((string) ($sessionObject['status'] ?? $storedSession['status']));
         $paymentStatus = trim((string) ($sessionObject['paymentStatus'] ?? $storedSession['payment_status']));
+        $isPaidSuccessEvent = in_array($eventType, $successEvents, true) && $paymentStatus === 'paid';
         $paymentIntentId = xpayObjectId($sessionObject['paymentIntent'] ?? null);
+        $storedPaymentIntentId = trim((string) ($storedSession['xpay_payment_intent_id'] ?? ''));
         $customerId = xpayObjectId($sessionObject['customer'] ?? null);
 
         $updateSession = $pdo->prepare('UPDATE xpay_checkout_sessions
             SET status = :status,
                 payment_status = :payment_status,
-                xpay_payment_intent_id = COALESCE(:payment_intent_id, xpay_payment_intent_id),
-                xpay_customer_id = COALESCE(:customer_id, xpay_customer_id),
+                xpay_payment_intent_id = COALESCE(xpay_payment_intent_id, :payment_intent_id),
+                xpay_customer_id = COALESCE(xpay_customer_id, :customer_id),
                 updated_at = NOW()
             WHERE id = :id');
         $updateSession->execute([
-            ':status' => $sessionStatus !== '' ? $sessionStatus : $storedSession['status'],
-            ':payment_status' => $paymentStatus !== '' ? $paymentStatus : $storedSession['payment_status'],
-            ':payment_intent_id' => $paymentIntentId,
-            ':customer_id' => $customerId,
+            ':status' => $isPaidSuccessEvent
+                ? $storedSession['status']
+                : ($sessionStatus !== '' ? $sessionStatus : $storedSession['status']),
+            ':payment_status' => $isPaidSuccessEvent
+                ? $storedSession['payment_status']
+                : ($paymentStatus !== '' ? $paymentStatus : $storedSession['payment_status']),
+            ':payment_intent_id' => $isPaidSuccessEvent ? null : $paymentIntentId,
+            ':customer_id' => $isPaidSuccessEvent ? null : $customerId,
             ':id' => $storedSession['id'],
         ]);
 
-        if (!in_array($eventType, $successEvents, true) || $paymentStatus !== 'paid') {
+        if (!$isPaidSuccessEvent) {
             $pdo->prepare("UPDATE xpay_webhook_events SET processing_status = 'processed', processed_at = NOW() WHERE event_id = :event_id")
                 ->execute([':event_id' => $eventId]);
             $pdo->commit();
@@ -348,11 +365,19 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
             $validationError = 'Checkout mode does not match the stored session mode.';
         } elseif ($paymentIntentId === null) {
             $validationError = 'The paid checkout has no Payment Intent ID.';
+        } elseif ($storedPaymentIntentId !== '' && $storedPaymentIntentId !== $paymentIntentId) {
+            $validationError = 'Payment Intent does not match the stored checkout session.';
         }
 
-        $requestStmt = $pdo->prepare("SELECT r.status, r.service_type, sgd.total_price
+        $requestStmt = $pdo->prepare("SELECT r.status, r.service_type,
+                CASE
+                    WHEN r.service_type = 'surgical_guide' THEN sgd.total_price
+                    WHEN r.service_type = 'surgeon_request' THEN sr.total_price
+                    ELSE NULL
+                END AS total_price
             FROM requests r
-            JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+            LEFT JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+            LEFT JOIN surgeon_requests sr ON sr.request_id = r.id
             WHERE r.id = :request_id AND r.user_id = :user_id
             FOR UPDATE");
         $requestStmt->execute([
@@ -360,8 +385,12 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
             ':user_id' => $storedSession['user_id'],
         ]);
         $request = $requestStmt->fetch();
-        if (!$request || $request['service_type'] !== 'surgical_guide') {
-            $validationError = 'The related Surgical Guide request was not found.';
+        if (!$request || !in_array($request['service_type'], ['surgical_guide', 'surgeon_request'], true)) {
+            $validationError = 'The related payable request was not found.';
+        } elseif (($metadata['service_type'] ?? '') !== $request['service_type']) {
+            $validationError = 'Checkout service type does not match the stored request.';
+        } elseif ($request['total_price'] === null || (float) $request['total_price'] <= 0) {
+            $validationError = 'The related request has no valid final price.';
         } elseif (xpayDecimalToMinor((string) $request['total_price']) !== (int) $storedSession['amount_minor']) {
             $validationError = 'The request total no longer matches the stored checkout amount.';
         }
@@ -375,20 +404,38 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
         }
 
         $amount = number_format(((int) $storedSession['amount_minor']) / 100, 2, '.', '');
-        $insertPayment = $pdo->prepare("INSERT IGNORE INTO payments
-            (request_id, user_id, receipt_file_path, amount, status, payment_source, currency,
-             provider_session_id, provider_payment_intent_id, approved_at)
-            VALUES (:request_id, :user_id, NULL, :amount, 'approved', 'xpay', :currency,
-                    :provider_session_id, :provider_payment_intent_id, NOW())");
-        $insertPayment->execute([
-            ':request_id' => $storedSession['request_id'],
-            ':user_id' => $storedSession['user_id'],
-            ':amount' => $amount,
-            ':currency' => $currency,
-            ':provider_session_id' => $xpaySessionId,
-            ':provider_payment_intent_id' => $paymentIntentId,
-        ]);
-        if ($insertPayment->rowCount() === 0) {
+        $existingApprovedStmt = $pdo->prepare("SELECT request_id, user_id, amount, currency, status,
+                payment_source, provider_session_id, provider_payment_intent_id
+            FROM payments
+            WHERE request_id = :request_id AND status = 'approved'
+            ORDER BY id LIMIT 1 FOR UPDATE");
+        $existingApprovedStmt->execute([':request_id' => $storedSession['request_id']]);
+        $existingApproved = $existingApprovedStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existingApproved && (string) $existingApproved['provider_session_id'] !== $xpaySessionId) {
+            $validationError = 'This request already has an approved payment.';
+            $pdo->prepare("UPDATE xpay_webhook_events SET processing_status = 'rejected', processed_at = NOW(), error_message = :error WHERE event_id = :event_id")
+                ->execute([':error' => $validationError, ':event_id' => $eventId]);
+            $pdo->commit();
+            error_log('XPay webhook rejected for session ' . $xpaySessionId . ': ' . $validationError);
+            return ['status' => 'rejected'];
+        }
+
+        if (!$existingApproved) {
+            $insertPayment = $pdo->prepare("INSERT IGNORE INTO payments
+                (request_id, user_id, receipt_file_path, amount, status, payment_source, currency,
+                 provider_session_id, provider_payment_intent_id, approved_at)
+                VALUES (:request_id, :user_id, NULL, :amount, 'approved', 'xpay', :currency,
+                        :provider_session_id, :provider_payment_intent_id, NOW())");
+            $insertPayment->execute([
+                ':request_id' => $storedSession['request_id'],
+                ':user_id' => $storedSession['user_id'],
+                ':amount' => $amount,
+                ':currency' => $currency,
+                ':provider_session_id' => $xpaySessionId,
+                ':provider_payment_intent_id' => $paymentIntentId,
+            ]);
+        }
+        if (!$existingApproved && $insertPayment->rowCount() === 0) {
             $existingPaymentStmt = $pdo->prepare("SELECT request_id, user_id, amount, currency, status, payment_source
                 FROM payments WHERE provider_session_id = :provider_session_id LIMIT 1");
             $existingPaymentStmt->execute([':provider_session_id' => $xpaySessionId]);
@@ -410,25 +457,28 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
             }
         }
 
-        if ($request['status'] === 'pending_payment'
-            && surgicalGuideTransitionIsAllowed('pending_payment', 'in_progress', 'gateway_payment_confirmation')) {
+        $paymentTransitionAllowed = $request['service_type'] === 'surgical_guide'
+            ? surgicalGuideTransitionIsAllowed('pending_payment', 'in_progress', 'gateway_payment_confirmation')
+            : surgeonRequestTransitionIsAllowed('pending_payment', 'in_progress', 'gateway_payment_confirmation');
+        if ($request['status'] === 'pending_payment' && $paymentTransitionAllowed) {
             $pdo->prepare("UPDATE requests SET status = 'in_progress' WHERE id = :request_id AND status = 'pending_payment'")
                 ->execute([':request_id' => $storedSession['request_id']]);
             $pdo->prepare("INSERT INTO request_activity_logs
                 (request_id, actor_id, actor_role, action, old_value, new_value, note)
-                VALUES (:request_id, NULL, 'gateway', 'xpay_payment_confirmed', 'pending_payment', 'in_progress', :note)")
+                VALUES (:request_id, NULL, 'system', 'online_payment_confirmed', 'pending_payment', 'in_progress', :note)")
                 ->execute([
                     ':request_id' => $storedSession['request_id'],
-                    ':note' => 'XPay confirmed payment for checkout session ' . $xpaySessionId . '.',
+                    ':note' => 'Online payment completed.',
                 ]);
         } elseif (!in_array($request['status'], ['in_progress', 'completed'], true)) {
             $pdo->prepare("INSERT INTO request_activity_logs
                 (request_id, actor_id, actor_role, action, old_value, new_value, note)
-                VALUES (:request_id, NULL, 'gateway', 'xpay_payment_requires_review', :status, :status, :note)")
+                VALUES (:request_id, NULL, 'system', 'online_payment_requires_review', :old_status, :new_status, :note)")
                 ->execute([
                     ':request_id' => $storedSession['request_id'],
-                    ':status' => $request['status'],
-                    ':note' => 'XPay confirmed payment after the request left the payable stage. Manual review is required.',
+                    ':old_status' => $request['status'],
+                    ':new_status' => $request['status'],
+                    ':note' => 'A completed online payment arrived after the request left the payable stage. Administrative review is required.',
                 ]);
         }
 

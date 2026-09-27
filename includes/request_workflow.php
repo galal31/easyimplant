@@ -36,3 +36,22 @@ function surgicalGuideTransitionIsAllowed(string $currentStatus, string $newStat
 
     return in_array($newStatus, $transitions[$source][$currentStatus] ?? [], true);
 }
+
+function surgeonRequestTransitionIsAllowed(string $currentStatus, string $newStatus, string $source): bool
+{
+    $transitions = [
+        'admin' => [
+            'pending_review' => ['rejected'],
+            'pending_payment' => ['rejected'],
+            'in_progress' => ['completed', 'rejected'],
+        ],
+        'price_confirmation' => [
+            'pending_review' => ['pending_payment'],
+        ],
+        'gateway_payment_confirmation' => [
+            'pending_payment' => ['in_progress'],
+        ],
+    ];
+
+    return in_array($newStatus, $transitions[$source][$currentStatus] ?? [], true);
+}

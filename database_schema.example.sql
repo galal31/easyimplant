@@ -316,6 +316,9 @@ CREATE TABLE `surgeon_requests` (
   `implant_cost_total` decimal(10,2) DEFAULT NULL,
   `travel_price` decimal(10,2) DEFAULT NULL,
   `estimated_total` decimal(10,2) DEFAULT NULL,
+  `total_price` decimal(10,2) DEFAULT NULL,
+  `price_confirmed_at` datetime DEFAULT NULL,
+  `price_confirmed_by` int(11) DEFAULT NULL,
   `currency` varchar(3) DEFAULT NULL,
   `requires_quote` tinyint(1) NOT NULL DEFAULT 1,
   `patient_name` varchar(100) NOT NULL,
@@ -328,7 +331,9 @@ CREATE TABLE `surgeon_requests` (
   KEY `request_id` (`request_id`),
   KEY `idx_surgeon_requests_service` (`surgeon_service_id`),
   KEY `idx_surgeon_requests_implant_type` (`implant_type_id`),
-  CONSTRAINT `surgeon_requests_ibfk_1` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE
+  KEY `idx_surgeon_requests_price_confirmed_by` (`price_confirmed_by`),
+  CONSTRAINT `surgeon_requests_ibfk_1` FOREIGN KEY (`request_id`) REFERENCES `requests` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `fk_surgeon_requests_price_confirmed_by` FOREIGN KEY (`price_confirmed_by`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 DROP TABLE IF EXISTS `surgeon_services`;

@@ -29,6 +29,11 @@ assertReviewTest(!surgicalGuideTransitionIsAllowed('pending_payment', 'in_progre
 assertReviewTest(!surgicalGuideTransitionIsAllowed('pending_payment', 'in_progress', 'payment_approval'), 'Manual receipt approval must not start production.');
 assertReviewTest(surgicalGuideTransitionIsAllowed('pending_payment', 'in_progress', 'gateway_payment_confirmation'), 'The future gateway transition remains explicitly isolated.');
 assertReviewTest(surgicalGuideTransitionIsAllowed('in_progress', 'completed', 'deliverables'), 'The existing final-deliverables completion path must remain available.');
+assertReviewTest(surgeonRequestTransitionIsAllowed('pending_review', 'pending_payment', 'price_confirmation'), 'Surgeon requests must enter payment only through price confirmation.');
+assertReviewTest(!surgeonRequestTransitionIsAllowed('pending_review', 'pending_payment', 'admin'), 'Admin status updates must not bypass surgeon price confirmation.');
+assertReviewTest(!surgeonRequestTransitionIsAllowed('pending_payment', 'in_progress', 'admin'), 'Admin must not manually start a surgeon request.');
+assertReviewTest(surgeonRequestTransitionIsAllowed('pending_payment', 'in_progress', 'gateway_payment_confirmation'), 'Only online payment confirmation may start a surgeon request.');
+assertReviewTest(surgeonRequestTransitionIsAllowed('in_progress', 'completed', 'admin'), 'Admin may complete an in-progress surgeon request.');
 
 assertReviewTest(detectRequestReviewFileType("\x89PNG\x0D\x0A\x1A\x0Arest") === 'image/png', 'PNG signature detection failed.');
 assertReviewTest(detectRequestReviewFileType('%PDF-1.7') === 'application/pdf', 'PDF signature detection failed.');
@@ -153,7 +158,7 @@ foreach (['admin/admin_view_request.php', 'view_request.php'] as $page) {
 
 $uploadSource = file_get_contents(__DIR__ . '/../api/upload_receipt.php');
 $verifySource = file_get_contents(__DIR__ . '/../api/verify_receipt.php');
-assertReviewTest(str_contains($uploadSource, 'Manual payment receipts are disabled for Surgical Guide requests.'), 'Receipt upload API must block Surgical Guides.');
-assertReviewTest(str_contains($verifySource, 'Historical receipts are read-only.'), 'Receipt review API must keep Surgical Guide receipts read-only.');
+assertReviewTest(str_contains($uploadSource, 'New manual payment receipts are disabled.'), 'Receipt upload API must block both payable services.');
+assertReviewTest(str_contains($verifySource, 'Manual payment receipt review is disabled.'), 'Receipt review API must block manual receipt review.');
 
 echo "Surgical Guide review workflow tests passed.\n";

@@ -430,11 +430,6 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                             <div class="case-card-header">
                                 <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-500"><i class="fa-solid fa-user-doctor"></i></div>
                                 <h2 class="text-lg font-bold text-[#13324a]">Surgeon Request Details</h2>
-                                <?php if ($request['status'] === 'pending_payment'): ?>
-                                    <a href="upload_receipt.php?id=<?= $request['id'] ?>" class="ml-auto inline-flex items-center justify-center rounded-lg bg-orange-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-orange-600 shadow-sm">
-                                        <i class="fa-solid fa-upload mr-2"></i> Upload Receipt
-                                    </a>
-                                <?php endif; ?>
                             </div>
                             <div class="case-card-body">
                                 <?php require __DIR__ . '/includes/surgeon_request_details.php'; ?>
@@ -449,6 +444,35 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <?php endif; ?>
                             </div>
                         </div>
+
+                        <?php if ($request['status'] === 'pending_payment'): ?>
+                            <div class="case-card">
+                                <div class="case-card-header">
+                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><i class="fa-solid fa-credit-card"></i></div>
+                                    <h2 class="text-lg font-bold text-[#13324a]">Online payment</h2>
+                                </div>
+                                <div class="case-card-body">
+                                    <?php if ((float) ($details['total_price'] ?? 0) > 0): ?>
+                                        <p class="text-2xl font-extrabold text-[#13324a]"><?= htmlspecialchars(formatMoney($details['total_price'])) ?></p>
+                                        <p class="mt-2 text-sm text-slate-600">Work begins after the full payment is completed.</p>
+                                        <?php if (!empty($_GET['payment_error'])): ?>
+                                            <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment could not be started. Please try again or contact support.</p>
+                                        <?php endif; ?>
+                                        <?php if (xpayIsConfigured()): ?>
+                                            <form method="post" action="api/create_xpay_checkout.php" class="mt-4">
+                                                <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>" />
+                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($request_workflow_csrf_token) ?>" />
+                                                <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#13324a]"><i class="fa-solid fa-lock mr-2"></i>Pay now</button>
+                                            </form>
+                                        <?php else: ?>
+                                            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Online payment is temporarily unavailable.</p>
+                                        <?php endif; ?>
+                                    <?php else: ?>
+                                        <p class="text-sm font-semibold text-amber-700">The final price is still being prepared. Payment will become available after approval.</p>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
 
                     <?php else: ?>
                         <!-- ── Surgical Guide: Key info cards ── -->
@@ -600,8 +624,8 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <?php elseif ($request['status'] === 'pending_payment'): ?>
                                         <div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                                             <p class="font-bold"><i class="fa-solid fa-circle-check mr-2"></i>The plan is approved.</p>
-                                            <p class="mt-1 text-xs leading-5">Pay the approved request total securely through XPay. Production starts only after XPay confirms the payment.</p>
-                                            <?php if (!empty($_GET['xpay_error'])): ?>
+                                            <p class="mt-1 text-xs leading-5">Complete the full payment online. Production starts after payment is completed.</p>
+                                            <?php if (!empty($_GET['payment_error'])): ?>
                                                 <div class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                                                     The checkout could not be started. Please try again, or contact support if the problem continues.
                                                 </div>
@@ -611,7 +635,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                                     <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>" />
                                                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($request_workflow_csrf_token) ?>" />
                                                     <button type="submit" class="inline-flex w-full items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#13324a] sm:w-auto">
-                                                        <i class="fa-solid fa-lock mr-2"></i> Pay <?= htmlspecialchars(formatMoney($details['total_price'] ?? 0)) ?> with XPay
+                                                        <i class="fa-solid fa-lock mr-2"></i> Pay now · <?= htmlspecialchars(formatMoney($details['total_price'] ?? 0)) ?>
                                                     </button>
                                                 </form>
                                             <?php else: ?>
@@ -759,8 +783,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <div class="flex w-full items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-left">
                                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-emerald-600 shadow-sm"><i class="fa-solid fa-shield-halved"></i></span>
                                     <span class="min-w-0 flex-1">
-                                        <span class="block text-sm font-bold text-emerald-800">Paid securely through XPay</span>
-                                        <span class="block truncate text-xs text-emerald-700">Session <?= htmlspecialchars((string) $payment['provider_session_id']) ?></span>
+                                        <span class="block text-sm font-bold text-emerald-800">Paid online</span>
                                     </span>
                                     <span class="shrink-0 text-sm font-extrabold text-emerald-800"><?= htmlspecialchars(formatCurrencyMoney($payment['amount'], $payment['currency'] ?? 'EGP')) ?></span>
                                 </div>
@@ -777,25 +800,13 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     </span>
                                     <span class="shrink-0 text-xs font-bold text-[#1d5f8c]">View receipt <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></span>
                                 </a>
-                                <?php if ($isSurgicalGuide): ?>
-                                    <p class="mt-3 text-xs text-slate-500 italic">This receipt is shown for historical reference only. Manual receipts are disabled for Surgical Guide requests.</p>
-                                <?php endif; ?>
-                            <?php endif; ?>
-                            <?php if ($payment['status'] === 'rejected' && $request['status'] === 'pending_payment' && !$isSurgicalGuide): ?>
-                                <div class="mt-4 text-center">
-                                    <p class="text-xs text-red-500 mb-2">Your previous receipt was rejected. Please upload a new one.</p>
-                                    <a href="upload_receipt.php?id=<?= $request['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-orange-500 px-4 py-2 text-xs font-bold text-white transition hover:bg-orange-600 shadow-sm">Upload New Receipt</a>
-                                </div>
+                                <p class="mt-3 text-xs text-slate-500 italic">Legacy receipt shown for historical reference only. New manual receipts are disabled.</p>
                             <?php endif; ?>
                         <?php else: ?>
                             <div class="text-center py-6 text-slate-500">
                                 <div class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400 mb-3"><i class="fa-solid fa-file-invoice text-xl"></i></div>
-                                <?php if ($isSurgicalGuide): ?>
-                                    <p class="text-sm font-semibold text-[#13324a]">No confirmed payment yet.</p>
-                                    <p class="mt-1 text-xs leading-5 text-slate-500">A successful XPay payment will appear here after the signed confirmation is received.</p>
-                                <?php else: ?>
-                                    <p class="text-sm font-medium">No payment receipt uploaded yet.</p>
-                                <?php endif; ?>
+                                <p class="text-sm font-semibold text-[#13324a]">No confirmed payment yet.</p>
+                                <p class="mt-1 text-xs leading-5 text-slate-500">A completed online payment will appear here.</p>
                             </div>
                         <?php endif; ?>
                     </div>

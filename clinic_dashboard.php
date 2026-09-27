@@ -28,10 +28,17 @@ try {
     $clinicIsInEgypt = strtolower((string) $clinicCountry) === 'egypt';
 
     $stmt = $pdo->prepare("
-        SELECT id, service_type, status, created_at 
-        FROM requests 
-        WHERE user_id = :user_id 
-        ORDER BY created_at DESC
+        SELECT r.id, r.service_type, r.status, r.created_at,
+            CASE
+                WHEN r.service_type = 'surgical_guide' THEN sgd.total_price
+                WHEN r.service_type = 'surgeon_request' THEN sr.total_price
+                ELSE NULL
+            END AS payable_total
+        FROM requests r
+        LEFT JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+        LEFT JOIN surgeon_requests sr ON sr.request_id = r.id
+        WHERE r.user_id = :user_id
+        ORDER BY r.created_at DESC
     ");
     $stmt->execute([':user_id' => $user_id]);
     $requests = $stmt->fetchAll();
@@ -171,21 +178,16 @@ function getServiceType($type) {
                                     <a href="view_request.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]">
                                         View Details
                                     </a>
-                                    <?php if ($req['status'] === 'pending_payment' && $req['service_type'] === 'surgical_guide' && xpayIsConfigured()): ?>
+                                    <?php if ($req['status'] === 'pending_payment' && (float) ($req['payable_total'] ?? 0) > 0 && xpayIsConfigured()): ?>
                                     <form method="post" action="api/create_xpay_checkout.php" class="ml-2 inline-block">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>" />
                                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($requestWorkflowCsrfToken) ?>" />
                                         <button type="submit" class="inline-flex items-center justify-center rounded-lg bg-[#1d5f8c] px-3 py-1.5 text-xs font-bold text-white transition hover:bg-[#13324a]">
-                                            <i class="fa-solid fa-lock mr-1.5"></i> Pay with XPay
+                                            <i class="fa-solid fa-lock mr-1.5"></i> Pay now
                                         </button>
                                     </form>
                                     <?php endif; ?>
                                     
-                                    <?php if ($req['status'] === 'pending_payment' && $req['service_type'] !== 'surgical_guide'): ?>
-                                    <a href="upload_receipt.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-orange-100 px-3 py-1.5 text-xs font-bold text-orange-700 transition hover:bg-orange-200 ml-2">
-                                        <i class="fa-solid fa-upload mr-1.5"></i> Upload Receipt
-                                    </a>
-                                    <?php endif; ?>
                                 </td>
                             </tr>
                             <?php endforeach; ?>

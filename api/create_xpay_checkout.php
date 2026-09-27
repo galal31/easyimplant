@@ -21,21 +21,27 @@ if ($requestId) {
 $fallbackSeparator = str_contains($fallbackUrl, '?') ? '&' : '?';
 
 if (!$requestId || !requestWorkflowCsrfIsValid($csrfToken)) {
-    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'xpay_error=session', true, 303);
+    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=session', true, 303);
     exit;
 }
 if (!xpayIsConfigured()) {
-    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'xpay_error=configuration', true, 303);
+    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=configuration', true, 303);
     exit;
 }
 
 $checkoutRecordId = null;
 try {
     $pdo->beginTransaction();
-    $stmt = $pdo->prepare("SELECT r.id, r.user_id, r.service_type, r.status, sgd.total_price,
+    $stmt = $pdo->prepare("SELECT r.id, r.user_id, r.service_type, r.status,
+            CASE
+                WHEN r.service_type = 'surgical_guide' THEN sgd.total_price
+                WHEN r.service_type = 'surgeon_request' THEN sr.total_price
+                ELSE NULL
+            END AS total_price,
             u.full_name, u.email
         FROM requests r
-        JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+        LEFT JOIN surgical_guide_details sgd ON sgd.request_id = r.id
+        LEFT JOIN surgeon_requests sr ON sr.request_id = r.id
         JOIN users u ON u.id = r.user_id
         WHERE r.id = :request_id AND r.user_id = :user_id
         FOR UPDATE");
@@ -44,7 +50,7 @@ try {
         ':user_id' => $_SESSION['user_id'],
     ]);
     $request = $stmt->fetch();
-    if (!$request || $request['service_type'] !== 'surgical_guide') {
+    if (!$request || !in_array($request['service_type'], ['surgical_guide', 'surgeon_request'], true)) {
         throw new DomainException('This payment request is not available.');
     }
     if ($request['status'] !== 'pending_payment') {
@@ -52,6 +58,13 @@ try {
     }
 
     $amountMinor = xpayDecimalToMinor((string) $request['total_price']);
+    $approvedStmt = $pdo->prepare("SELECT id FROM payments
+        WHERE request_id = :request_id AND status = 'approved' LIMIT 1 FOR UPDATE");
+    $approvedStmt->execute([':request_id' => $requestId]);
+    if ($approvedStmt->fetchColumn()) {
+        throw new DomainException('This request is already paid.');
+    }
+    $currentLivemode = str_starts_with(xpayConfig()['secret_key'], 'sk_live_') ? 1 : 0;
     $existingStmt = $pdo->prepare("SELECT *,
             (expires_at IS NOT NULL AND expires_at > UTC_TIMESTAMP()) AS is_unexpired,
             (created_at > NOW() - INTERVAL 24 HOUR) AS is_recent
@@ -65,6 +78,9 @@ try {
         && $checkout['status'] === 'open'
         && !empty($checkout['checkout_url'])
         && (int) $checkout['is_unexpired'] === 1
+        && (int) $checkout['amount_minor'] === $amountMinor
+        && strtoupper((string) $checkout['currency']) === 'EGP'
+        && (int) $checkout['livemode'] === $currentLivemode
         && xpayIsTrustedCheckoutUrl((string) $checkout['checkout_url'])) {
         $pdo->commit();
         header('Location: ' . $checkout['checkout_url'], true, 303);
@@ -75,6 +91,7 @@ try {
         && in_array($checkout['status'], ['creating', 'failed'], true)
         && (int) $checkout['amount_minor'] === $amountMinor
         && strtoupper((string) $checkout['currency']) === 'EGP'
+        && (int) $checkout['livemode'] === $currentLivemode
         && (int) $checkout['is_recent'] === 1;
 
     if (!$canRetryExisting) {
@@ -89,7 +106,7 @@ try {
             ':idempotency_key' => xpayUuidV4(),
             ':return_token' => bin2hex(random_bytes(32)),
             ':amount_minor' => $amountMinor,
-            ':livemode' => str_starts_with(xpayConfig()['secret_key'], 'sk_live_') ? 1 : 0,
+            ':livemode' => $currentLivemode,
         ]);
         $checkoutRecordId = (int) $pdo->lastInsertId();
         $checkoutStmt = $pdo->prepare('SELECT * FROM xpay_checkout_sessions WHERE id = :id');
@@ -103,7 +120,7 @@ try {
     $pdo->commit();
 
     $payload = xpayCreateCheckoutPayload(
-        ['id' => $request['id'], 'user_id' => $request['user_id']],
+        ['id' => $request['id'], 'user_id' => $request['user_id'], 'service_type' => $request['service_type']],
         ['full_name' => $request['full_name'], 'email' => $request['email']],
         $amountMinor,
         (string) $checkout['return_token']
@@ -155,7 +172,7 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
-    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'xpay_error=not_payable', true, 303);
+    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=not_payable', true, 303);
     exit;
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {
@@ -173,6 +190,6 @@ try {
         }
     }
     error_log('Create XPay checkout error: ' . $e->getMessage());
-    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'xpay_error=unavailable', true, 303);
+    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=unavailable', true, 303);
     exit;
 }

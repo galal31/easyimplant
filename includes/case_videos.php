@@ -1,4 +1,30 @@
 <?php
+require_once __DIR__ . '/doctors.php';
+
+function saveCaseVideo(PDO $pdo, array $form, array $doctorIds = [], array $contributions = []): int
+{
+    $ownTransaction = !$pdo->inTransaction();
+    if ($ownTransaction) $pdo->beginTransaction(); else $pdo->exec('SAVEPOINT case_video_save');
+    try {
+        $id = (int) ($form['id'] ?? 0);
+        if ($id) {
+            $check = $pdo->prepare('SELECT id FROM videos WHERE id = ? FOR UPDATE');
+            $check->execute([$id]);
+            if (!$check->fetchColumn()) throw new InvalidArgumentException('Video not found.');
+            $pdo->prepare('UPDATE videos SET title=?,description=?,video_url=? WHERE id=?')->execute([$form['title'],$form['description'],$form['video_url'],$id]);
+        } else {
+            $pdo->prepare('INSERT INTO videos (title,description,video_url) VALUES (?,?,?)')->execute([$form['title'],$form['description'],$form['video_url']]);
+            $id = (int) $pdo->lastInsertId();
+        }
+        saveVideoDoctors($pdo, $id, $doctorIds, $contributions);
+        if ($ownTransaction) $pdo->commit(); else $pdo->exec('RELEASE SAVEPOINT case_video_save');
+        return $id;
+    } catch (Throwable $e) {
+        if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
+        elseif (!$ownTransaction) $pdo->exec('ROLLBACK TO SAVEPOINT case_video_save');
+        throw $e;
+    }
+}
 
 function caseVideoEmbedUrl(string $url): ?string
 {
@@ -36,7 +62,7 @@ function renderCaseVideoPlayer(string $url, string $title): void
 function renderCaseVideos(PDO $pdo, int $limit = 6): void
 {
     try {
-        $stmt = $pdo->query("SELECT title, description, video_url FROM videos WHERE video_url LIKE 'https://iframe.mediadelivery.net/embed/%' OR video_url LIKE 'https://player.mediadelivery.net/embed/%' ORDER BY created_at DESC, id DESC LIMIT " . (int) $limit);
+        $stmt = $pdo->query("SELECT id, title, description, video_url FROM videos WHERE video_url LIKE 'https://iframe.mediadelivery.net/embed/%' OR video_url LIKE 'https://player.mediadelivery.net/embed/%' ORDER BY created_at DESC, id DESC LIMIT " . (int) $limit);
         $videos = [];
         foreach ($stmt as $video) {
             if (caseVideoEmbedUrl((string) $video['video_url']) !== null) {
@@ -52,6 +78,12 @@ function renderCaseVideos(PDO $pdo, int $limit = 6): void
     }
     if (!$videos) {
         return;
+    }
+    try {
+        $doctors = videoDoctorMap($pdo, array_column($videos, 'id'));
+    } catch (PDOException $e) {
+        error_log('Case doctors unavailable: ' . $e->getMessage());
+        $doctors = [];
     }
     ?>
     <section id="real-cases" class="case-videos-section" aria-labelledby="case-videos-title">
@@ -70,6 +102,7 @@ function renderCaseVideos(PDO $pdo, int $limit = 6): void
                             <?php if (trim((string) $video['description']) !== ''): ?>
                                 <p><?= nl2br(htmlspecialchars($video['description'], ENT_QUOTES, 'UTF-8')) ?></p>
                             <?php endif; ?>
+                            <?php renderVideoDoctorLinks($doctors[$video['id']] ?? []); ?>
                         </div>
                     </article>
                 <?php endforeach; ?>

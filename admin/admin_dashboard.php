@@ -130,7 +130,7 @@ try {
         <i class="fa-solid fa-compass text-2xl"></i>
     </div>
     <h3 class="text-lg font-bold text-[#13324a] mb-2">Welcome to the Admin Panel</h3>
-    <p class="text-slate-500 max-w-md mx-auto mb-6">Use the navigation bar above to manage pending clinic approvals and review incoming service requests.</p>
+    <p class="text-slate-500 max-w-md mx-auto mb-6">Use the sidebar navigation to manage pending clinic approvals and review incoming service requests.</p>
     <div class="flex justify-center gap-4">
         <a href="admin_clinics.php" class="bg-[#13324a] hover:bg-[#1d5f8c] text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition">Manage Clinics</a>
         <a href="admin_requests.php" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-lg text-sm font-semibold transition">View Requests</a>

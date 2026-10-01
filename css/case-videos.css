@@ -10,5 +10,9 @@
 .case-video-copy { padding: 22px; }
 .case-video-copy h3 { margin: 0; color: #071c2a; font-size: 19px; font-weight: 700; }
 .case-video-copy p { margin: 10px 0 0; color: #526b78; line-height: 1.7; white-space: normal; }
+.case-doctor-links { display: flex; flex-wrap: wrap; gap: 10px 20px; margin-top: 18px; padding: 14px 0 0; border-top: 1px solid #d9e8ee; list-style: none; }
+.case-doctor-links a { color: #123e55; text-decoration: underline; text-underline-offset: 4px; font-weight: 600; }
+.case-doctor-links a:hover { color: #24afcb; }
+.case-doctor-links span { display: block; font-size: 12px; color: #526b78; margin-top: 4px; }
 @media (max-width: 900px) { .case-videos-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .case-videos-section { padding: 68px 0; } .case-videos-grid { grid-template-columns: 1fr; gap: 18px; } }

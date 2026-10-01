@@ -1,179 +1,130 @@
 <?php
-// admin_videos.php
 require_once 'includes/admin_header.php';
+require_once __DIR__ . '/../includes/case_videos.php';
 
-// Handle Video Upload
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['video_file'])) {
-    $title = trim(filter_input(INPUT_POST, 'title', FILTER_SANITIZE_STRING));
-    $description = trim(filter_input(INPUT_POST, 'description', FILTER_SANITIZE_STRING));
-    $file = $_FILES['video_file'];
+if (empty($_SESSION['case_videos_csrf_token'])) {
+    $_SESSION['case_videos_csrf_token'] = bin2hex(random_bytes(32));
+}
+$error = '';
+$success = '';
+$form = ['id' => 0, 'title' => '', 'description' => '', 'video_url' => ''];
 
-    if (empty($title)) {
-        $error = "Video title is required.";
-    } elseif ($file['error'] !== UPLOAD_ERR_OK) {
-        $error = "File upload error.";
-    } else {
-        $allowed_types = ['video/mp4', 'video/webm', 'video/ogg'];
-        $max_size = 50 * 1024 * 1024; // 50MB
-
-        if (!in_array($file['type'], $allowed_types)) {
-            $error = "Invalid file type. Only MP4, WebM, and OGG are allowed.";
-        } elseif ($file['size'] > $max_size) {
-            $error = "File size exceeds 50MB limit.";
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $action = (string) ($_POST['action'] ?? '');
+    $id = filter_var($_POST['id'] ?? null, FILTER_VALIDATE_INT);
+    if (!hash_equals($_SESSION['case_videos_csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
+        $error = 'Your session expired. Refresh the page and try again.';
+    } elseif ($action === 'save') {
+        $form = [
+            'id' => $id ?: 0,
+            'title' => trim((string) ($_POST['title'] ?? '')),
+            'description' => trim((string) ($_POST['description'] ?? '')),
+            'video_url' => trim((string) ($_POST['video_url'] ?? '')),
+        ];
+        if ($form['title'] === '' || mb_strlen($form['title']) > 255) {
+            $error = 'Enter a case name of up to 255 characters.';
+        } elseif (mb_strlen($form['description']) > 5000) {
+            $error = 'Description must be 5,000 characters or fewer.';
+        } elseif (caseVideoEmbedUrl($form['video_url']) === null) {
+            $error = 'Paste a Bunny Stream embed link beginning with https://iframe.mediadelivery.net/embed/';
         } else {
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-            $filename = uniqid() . '.' . $ext;
-            $upload_dir = '../uploads/videos/';
-            
-            if (!is_dir($upload_dir)) {
-                mkdir($upload_dir, 0755, true);
-            }
-            
-            $filepath = $upload_dir . $filename;
-            
-            if (move_uploaded_file($file['tmp_name'], $filepath)) {
-                $db_path = 'uploads/videos/' . $filename;
-                try {
-                    $stmt = $pdo->prepare("INSERT INTO videos (title, description, video_path) VALUES (:title, :desc, :path)");
-                    $stmt->execute([
-                        ':title' => $title,
-                        ':desc' => $description,
-                        ':path' => $db_path
-                    ]);
-                    $success = "Video uploaded successfully.";
-                } catch (\PDOException $e) {
-                    $error = "Database error: " . $e->getMessage();
+            try {
+                if ($form['id']) {
+                    $stmt = $pdo->prepare('UPDATE videos SET title = ?, description = ?, video_url = ? WHERE id = ?');
+                    $stmt->execute([$form['title'], $form['description'], $form['video_url'], $form['id']]);
+                    $check = $pdo->prepare('SELECT id FROM videos WHERE id = ?');
+                    $check->execute([$form['id']]);
+                    if (!$check->fetchColumn()) throw new RuntimeException('Video not found');
+                    $success = 'Case video updated.';
+                } else {
+                    $stmt = $pdo->prepare('INSERT INTO videos (title, description, video_url) VALUES (?, ?, ?)');
+                    $stmt->execute([$form['title'], $form['description'], $form['video_url']]);
+                    $success = 'Case video added.';
                 }
-            } else {
-                $error = "Failed to move uploaded file.";
+                $form = ['id' => 0, 'title' => '', 'description' => '', 'video_url' => ''];
+            } catch (Throwable $e) {
+                error_log('Case video save failed: ' . $e->getMessage());
+                $error = 'Could not save the video. Please try again.';
             }
         }
-    }
-}
-
-// Handle Delete Video
-if (isset($_GET['delete'])) {
-    $id = filter_input(INPUT_GET, 'delete', FILTER_VALIDATE_INT);
-    if ($id) {
+    } elseif ($action === 'delete' && $id) {
         try {
-            $stmt = $pdo->prepare("SELECT video_path FROM videos WHERE id = :id");
-            $stmt->execute([':id' => $id]);
-            $video = $stmt->fetch();
-            if ($video) {
-                $file_to_delete = '../' . $video['video_path'];
-                if (file_exists($file_to_delete)) {
-                    unlink($file_to_delete);
-                }
-                $pdo->prepare("DELETE FROM videos WHERE id = :id")->execute([':id' => $id]);
-                $success = "Video deleted successfully.";
-            }
-        } catch (\PDOException $e) {
-            $error = "Failed to delete video.";
+            $stmt = $pdo->prepare('DELETE FROM videos WHERE id = ?');
+            $stmt->execute([$id]);
+            $success = $stmt->rowCount() ? 'Case video deleted.' : 'Video was already removed.';
+        } catch (PDOException $e) {
+            error_log('Case video delete failed: ' . $e->getMessage());
+            $error = 'Could not delete the video.';
         }
+    } else {
+        $error = 'Invalid action.';
     }
 }
 
-// Fetch all videos
 try {
-    $videos = $pdo->query("SELECT * FROM videos ORDER BY created_at DESC")->fetchAll();
-} catch (\PDOException $e) {
+    $videos = $pdo->query('SELECT id, title, description, video_url, created_at FROM videos ORDER BY created_at DESC, id DESC')->fetchAll();
+} catch (PDOException $e) {
+    error_log('Case videos list failed: ' . $e->getMessage());
     $videos = [];
+    $error = 'Could not load videos. Apply the Bunny case videos migration if it has not run.';
 }
-
-$videosTable = adminTableState($videos, ['title', 'description', 'video_path', 'created_at'], 'videos');
+$videosTable = adminTableState($videos, ['title', 'description', 'video_url', 'created_at'], 'videos');
 ?>
-
-<div class="mb-6 flex justify-between items-end">
-    <div>
-        <h2 class="text-2xl font-bold text-[#13324a]">Manage Gallery</h2>
-        <p class="text-slate-500 text-sm mt-1">Upload and manage videos showcasing successful implant cases.</p>
-    </div>
+<div class="mb-6"><h2 class="text-2xl font-bold text-[#13324a]">Real Case Videos</h2><p class="text-slate-500 text-sm mt-1">Add a case name, description, and Bunny Stream embed link. No video upload is needed here.</p></div>
+<?php if ($error): ?><div class="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-semibold"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<?php if ($success): ?><div class="bg-emerald-50 text-emerald-600 p-4 rounded-xl mb-6 text-sm font-semibold"><?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+    <div class="xl:col-span-1"><div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <h3 id="video-form-heading" class="text-lg font-bold text-[#13324a] mb-4 border-b border-slate-100 pb-3"><?= $form['id'] ? 'Edit Case Video' : 'Add Case Video' ?></h3>
+        <form method="post" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['case_videos_csrf_token'], ENT_QUOTES, 'UTF-8') ?>"><input type="hidden" name="action" value="save"><input type="hidden" name="id" id="case-video-id" value="<?= (int) $form['id'] ?>">
+            <div><label for="case-title" class="block text-sm font-bold text-[#13324a] mb-2">Case name</label><input id="case-title" type="text" name="title" maxlength="255" required value="<?= htmlspecialchars($form['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"></div>
+            <div><label for="case-description" class="block text-sm font-bold text-[#13324a] mb-2">Description</label><textarea id="case-description" name="description" maxlength="5000" rows="4" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"><?= htmlspecialchars($form['description'], ENT_QUOTES, 'UTF-8') ?></textarea></div>
+            <div><label for="case-url" class="block text-sm font-bold text-[#13324a] mb-2">Bunny video link</label><input id="case-url" type="url" name="video_url" maxlength="2048" required placeholder="https://iframe.mediadelivery.net/embed/..." value="<?= htmlspecialchars($form['video_url'], ENT_QUOTES, 'UTF-8') ?>" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"><p class="text-xs text-slate-500 mt-2">In Bunny Stream, copy the video’s Embed URL and paste it here.</p></div>
+            <button type="submit" class="w-full bg-[#13324a] hover:bg-[#1d5f8c] text-white px-4 py-2.5 rounded-xl text-sm font-bold transition">Save video</button>
+            <button id="case-video-cancel" type="button" class="<?= $form['id'] ? '' : 'hidden ' ?>w-full text-sm font-semibold text-slate-600 hover:text-[#13324a]">Cancel editing</button>
+        </form>
+    </div></div>
+    <div class="xl:col-span-2"><div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-6 py-5 border-b border-slate-100 bg-slate-50"><h3 class="text-lg font-bold text-[#13324a]">Case videos</h3></div>
+        <?php adminTableToolbar('videos', $videosTable, 'Search videos...'); ?>
+        <div class="overflow-x-auto"><table class="w-full text-left text-sm">
+            <thead class="uppercase tracking-wider border-b-2 border-slate-100 bg-white text-slate-500 font-semibold text-[11px]"><tr><th class="px-6 py-4">Preview</th><th class="px-6 py-4">Case</th><th class="px-6 py-4">Added</th><th class="px-6 py-4">Actions</th></tr></thead>
+            <tbody class="divide-y divide-slate-100 text-slate-700" data-admin-table-body="videos">
+                <?php if (!$videosTable['rows']): ?><tr><td colspan="4" class="px-6 py-12 text-center text-slate-500">No videos yet.</td></tr><?php endif; ?>
+                <?php foreach ($videosTable['rows'] as $video): ?>
+                    <tr class="hover:bg-slate-50/60 transition">
+                        <td class="px-6 py-4"><div class="w-40 rounded-lg overflow-hidden"><?php if (caseVideoEmbedUrl($video['video_url'])) { renderCaseVideoPlayer($video['video_url'], $video['title']); } else { echo '<span class="text-xs text-amber-700">Legacy video. Edit its link.</span>'; } ?></div></td>
+                        <td class="px-6 py-4 min-w-64"><p class="font-bold text-[#13324a]"><?= htmlspecialchars($video['title'], ENT_QUOTES, 'UTF-8') ?></p><p class="mt-1 max-w-md whitespace-normal text-xs leading-5 text-slate-500"><?= nl2br(htmlspecialchars($video['description'] ?: 'No description', ENT_QUOTES, 'UTF-8')) ?></p></td>
+                        <td class="px-6 py-4 whitespace-nowrap text-slate-500"><?= htmlspecialchars(date('M d, Y', strtotime($video['created_at'])), ENT_QUOTES, 'UTF-8') ?></td>
+                        <td class="px-6 py-4"><div class="flex gap-2"><button type="button" class="case-video-edit px-3 py-2 rounded-lg bg-blue-50 text-[#1d5f8c] font-semibold" data-id="<?= (int) $video['id'] ?>" data-title="<?= htmlspecialchars($video['title'], ENT_QUOTES, 'UTF-8') ?>" data-description="<?= htmlspecialchars($video['description'] ?? '', ENT_QUOTES, 'UTF-8') ?>" data-url="<?= htmlspecialchars($video['video_url'], ENT_QUOTES, 'UTF-8') ?>">Edit</button>
+                            <form method="post" onsubmit="return confirm('Delete this case video?');"><input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['case_videos_csrf_token'], ENT_QUOTES, 'UTF-8') ?>"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int) $video['id'] ?>"><button type="submit" class="px-3 py-2 rounded-lg bg-red-50 text-red-600 font-semibold">Delete</button></form></div></td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table></div>
+        <?php adminTablePagination('videos', $videosTable); ?>
+    </div></div>
 </div>
-
-<?php if(isset($error)): ?>
-    <div class="bg-red-50 text-red-600 p-4 rounded-xl mb-6 text-sm font-semibold flex items-center gap-2">
-        <i class="fa-solid fa-triangle-exclamation"></i> <?= htmlspecialchars($error) ?>
-    </div>
-<?php endif; ?>
-
-<?php if(isset($success)): ?>
-    <div class="bg-emerald-50 text-emerald-600 p-4 rounded-xl mb-6 text-sm font-semibold flex items-center gap-2">
-        <i class="fa-solid fa-circle-check"></i> <?= htmlspecialchars($success) ?>
-    </div>
-<?php endif; ?>
-
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    
-    <!-- Upload Form -->
-    <div class="lg:col-span-1">
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-            <h3 class="text-lg font-bold text-[#13324a] mb-4 border-b border-slate-100 pb-3">Upload New Video</h3>
-            <form action="" method="POST" enctype="multipart/form-data" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-bold text-[#13324a] mb-2">Video Title</label>
-                    <input type="text" name="title" required class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-[#1d5f8c] focus:border-[#1d5f8c] bg-slate-50 focus:bg-white transition">
-                </div>
-                <div>
-                    <label class="block text-sm font-bold text-[#13324a] mb-2">Description (Optional)</label>
-                    <textarea name="description" rows="3" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm focus:ring-[#1d5f8c] focus:border-[#1d5f8c] bg-slate-50 focus:bg-white transition"></textarea>
-                </div>
-                <div>
-                    <label class="block text-sm font-bold text-[#13324a] mb-2">Video File</label>
-                    <input type="file" name="video_file" accept="video/mp4,video/webm,video/ogg" required class="w-full text-sm text-slate-500 file:mr-4 file:py-2.5 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-[#1d5f8c] file:text-white hover:file:bg-[#13324a] transition cursor-pointer">
-                    <p class="text-xs text-slate-400 mt-2">Max size: 50MB. Formats: MP4, WebM, OGG.</p>
-                </div>
-                <button type="submit" class="w-full bg-[#13324a] hover:bg-[#1d5f8c] text-white px-4 py-2.5 rounded-xl text-sm font-bold transition flex justify-center items-center gap-2">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Upload Video
-                </button>
-            </form>
-        </div>
-    </div>
-
-    <!-- Video List -->
-    <div class="lg:col-span-2">
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-            <div class="px-6 py-5 border-b border-slate-100 bg-slate-50">
-                <h3 class="text-lg font-bold text-[#13324a]">Uploaded Videos</h3>
-            </div>
-            <?php adminTableToolbar('videos', $videosTable, 'Search videos...'); ?>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                    <thead class="uppercase tracking-wider border-b-2 border-slate-100 bg-white text-slate-500 font-semibold text-[11px]">
-                        <tr>
-                            <th class="px-6 py-4">Preview</th>
-                            <th class="px-6 py-4">Video</th>
-                            <th class="px-6 py-4">Uploaded</th>
-                            <th class="px-6 py-4 text-right">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 text-slate-700" data-admin-table-body="videos">
-                        <?php if (!$videosTable['rows']): ?>
-                            <tr><td colspan="4" class="px-6 py-12 text-center text-slate-500">No videos match your search.</td></tr>
-                        <?php endif; ?>
-                        <?php foreach($videosTable['rows'] as $video): ?>
-                            <tr class="hover:bg-slate-50/60 transition">
-                                <td class="px-6 py-4">
-                                    <video src="../<?= htmlspecialchars($video['video_path']) ?>" controls preload="metadata" class="h-20 w-32 rounded-lg bg-black object-cover"></video>
-                                </td>
-                                <td class="px-6 py-4 min-w-64">
-                                    <p class="font-bold text-[#13324a]"><?= htmlspecialchars($video['title']) ?></p>
-                                    <p class="mt-1 max-w-md whitespace-normal text-xs leading-5 text-slate-500"><?= htmlspecialchars($video['description'] ?: 'No description') ?></p>
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-slate-500"><?= date('M d, Y', strtotime($video['created_at'])) ?></td>
-                                <td class="px-6 py-4 text-right">
-                                    <a href="?delete=<?= (int) $video['id'] ?>" onclick="return confirm('Are you sure you want to delete this video?');" class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-red-50 text-red-500 transition hover:bg-red-500 hover:text-white" title="Delete Video">
-                                        <i class="fa-solid fa-trash-can"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-            <?php adminTablePagination('videos', $videosTable); ?>
-        </div>
-    </div>
-
-</div>
-
+<script>
+document.addEventListener('click', function (event) {
+    const edit = event.target.closest('.case-video-edit');
+    if (!edit) return;
+    document.getElementById('case-video-id').value = edit.dataset.id;
+    document.getElementById('case-title').value = edit.dataset.title;
+    document.getElementById('case-description').value = edit.dataset.description;
+    document.getElementById('case-url').value = edit.dataset.url;
+    document.getElementById('video-form-heading').textContent = 'Edit Case Video';
+    document.getElementById('case-video-cancel').classList.remove('hidden');
+    document.getElementById('case-title').focus();
+});
+document.getElementById('case-video-cancel').addEventListener('click', function () {
+    document.getElementById('case-video-id').value = '0';
+    document.getElementById('case-title').value = '';
+    document.getElementById('case-description').value = '';
+    document.getElementById('case-url').value = '';
+    document.getElementById('video-form-heading').textContent = 'Add Case Video';
+    this.classList.add('hidden');
+});
+</script>
 <?php require_once 'includes/admin_footer.php'; ?>

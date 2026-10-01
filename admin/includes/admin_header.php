@@ -1,75 +1,68 @@
 <?php
-// admin_header.php
 require_once __DIR__ . '/../../includes/db_connect.php';
 require_once __DIR__ . '/../../includes/system_settings.php';
 require_once __DIR__ . '/admin_functions.php';
 require_once __DIR__ . '/admin_table.php';
 
-// Check if user is logged in and is an admin
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header("Location: ../login.php");
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'admin') {
+    header('Location: ../login.php');
     exit;
 }
 
-$full_name = $_SESSION['full_name'];
+$full_name = $_SESSION['full_name'] ?? 'Administrator';
 $current_page = basename($_SERVER['PHP_SELF']);
 $adminSystemIconUrl = getSystemIconUrl($pdo, '../');
+$adminNav = [
+    ['admin_dashboard.php', 'Dashboard', 'fa-chart-pie', ['admin_dashboard.php']],
+    ['admin_clinics.php', 'Clinics', 'fa-hospital-user', ['admin_clinics.php', 'admin_clinic_accounts.php', 'admin_clinic_account.php', 'admin_edit_clinic.php']],
+    ['admin_requests.php', 'Requests', 'fa-list-check', ['admin_requests.php', 'admin_view_request.php']],
+    ['admin_implant_types.php', 'Implants', 'fa-tooth', ['admin_implant_types.php']],
+    ['admin_guide_pricing.php', 'Pricing', 'fa-tags', ['admin_guide_pricing.php']],
+    ['admin_surgeon_travel_pricing.php', 'Travel', 'fa-car', ['admin_surgeon_travel_pricing.php']],
+    ['admin_surgeon_services.php', 'Services', 'fa-user-doctor', ['admin_surgeon_services.php']],
+    ['admin_videos.php', 'Case Videos', 'fa-video', ['admin_videos.php']],
+    ['admin_settings.php', 'Settings', 'fa-gear', ['admin_settings.php']],
+];
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard | Easy Implant</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <link rel="stylesheet" href="../css/case-videos.css">
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: 'Outfit', 'Cairo', sans-serif; background: #f4f8fb; }
-    </style>
+    <style>body { font-family: 'Outfit', 'Cairo', sans-serif; background: #f4f8fb; }</style>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased flex flex-col min-h-screen">
-
-    <!-- Top Navigation -->
-    <nav class="bg-[#13324a] text-white border-b border-[#0f2233] sticky top-0 z-30 shadow-md">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16">
-                <div class="flex items-center gap-6">
-                    <div class="flex items-center gap-3">
-                        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white">
-                            <?php if ($adminSystemIconUrl): ?>
-                                <img src="<?= htmlspecialchars($adminSystemIconUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Easy Implant" class="h-7 w-7 object-contain">
-                            <?php else: ?>
-                                <i class="fa-solid fa-tooth text-sm"></i>
-                            <?php endif; ?>
-                        </div>
-                        <span class="font-bold text-white text-lg hidden sm:block">Admin Panel</span>
-                    </div>
-                    
-                    <!-- Navigation Links -->
-                    <div class="hidden md:flex space-x-2">
-                        <a href="admin_dashboard.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_dashboard.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-chart-pie mr-1.5"></i> Dashboard</a>
-                        <a href="admin_clinics.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= in_array($current_page, ['admin_clinics.php', 'admin_clinic_accounts.php', 'admin_clinic_account.php', 'admin_edit_clinic.php'], true) ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-hospital-user mr-1.5"></i> Clinics</a>
-                        <a href="admin_requests.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_requests.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-list-check mr-1.5"></i> Requests</a>
-                        <a href="admin_implant_types.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_implant_types.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-tooth mr-1.5"></i> Implants</a>
-                        <a href="admin_guide_pricing.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_guide_pricing.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-tags mr-1.5"></i> Pricing</a>
-                        <a href="admin_surgeon_travel_pricing.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_surgeon_travel_pricing.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-car mr-1.5"></i> Travel</a>
-                        <a href="admin_surgeon_services.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_surgeon_services.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-user-doctor mr-1.5"></i> Services</a>
-                        <a href="admin_settings.php" class="px-3 py-2 rounded-lg text-sm font-semibold transition <?= $current_page == 'admin_settings.php' ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>"><i class="fa-solid fa-gear mr-1.5"></i> Settings</a>
-                    </div>
-                </div>
-                
-                <div class="flex items-center gap-4">
-                    <div class="hidden sm:block text-right">
-                        <p class="text-sm font-bold text-white leading-tight"><?= htmlspecialchars($full_name) ?></p>
-                        <p class="text-[11px] font-medium text-slate-300 uppercase tracking-wide">Administrator</p>
-                    </div>
-                    <a href="../logout.php" class="inline-flex items-center justify-center rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-500 hover:border-red-500">
-                        <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Logout
-                    </a>
-                </div>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+    <div id="admin-sidebar-backdrop" class="fixed inset-0 z-30 hidden bg-slate-950/60 lg:hidden"></div>
+    <aside id="admin-sidebar" class="fixed inset-y-0 left-0 z-40 flex w-64 -translate-x-full flex-col bg-[#13324a] text-white shadow-xl transition-transform duration-200 lg:translate-x-0" aria-label="Admin navigation">
+        <div class="flex h-20 items-center gap-3 border-b border-white/10 px-5">
+            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10">
+                <?php if ($adminSystemIconUrl): ?><img src="<?= htmlspecialchars($adminSystemIconUrl, ENT_QUOTES, 'UTF-8') ?>" alt="Easy Implant" class="h-7 w-7 object-contain"><?php else: ?><i class="fa-solid fa-tooth text-sm"></i><?php endif; ?>
             </div>
+            <span class="font-bold text-lg">Admin Panel</span>
+            <button id="admin-sidebar-close" type="button" class="ml-auto rounded-lg p-2 text-slate-300 hover:bg-white/10 lg:hidden" aria-label="Close navigation"><i class="fa-solid fa-xmark"></i></button>
         </div>
-    </nav>
-
-    <main class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <nav class="flex-1 space-y-1 overflow-y-auto p-3" aria-label="Admin pages">
+            <?php foreach ($adminNav as [$href, $label, $icon, $activePages]): ?>
+                <a href="<?= htmlspecialchars($href, ENT_QUOTES, 'UTF-8') ?>" class="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition <?= in_array($current_page, $activePages, true) ? 'bg-[#1d5f8c] text-white' : 'text-slate-300 hover:bg-white/10 hover:text-white' ?>" <?= in_array($current_page, $activePages, true) ? 'aria-current="page"' : '' ?>>
+                    <i class="fa-solid <?= htmlspecialchars($icon, ENT_QUOTES, 'UTF-8') ?> w-5 text-center" aria-hidden="true"></i><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?>
+                </a>
+            <?php endforeach; ?>
+        </nav>
+        <div class="border-t border-white/10 p-4">
+            <p class="truncate text-sm font-bold"><?= htmlspecialchars($full_name, ENT_QUOTES, 'UTF-8') ?></p>
+            <p class="mb-3 text-xs text-slate-300">Administrator</p>
+            <a href="../logout.php" class="flex items-center gap-3 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-semibold transition hover:bg-red-500"><i class="fa-solid fa-arrow-right-from-bracket"></i>Logout</a>
+        </div>
+    </aside>
+    <div class="min-h-screen lg:pl-64">
+        <div class="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm lg:hidden">
+            <button id="admin-sidebar-open" type="button" class="rounded-lg p-2 text-[#13324a]" aria-controls="admin-sidebar" aria-expanded="false" aria-label="Open navigation"><i class="fa-solid fa-bars"></i></button>
+            <span class="font-bold text-[#13324a]">Admin Panel</span>
+            <span class="w-9" aria-hidden="true"></span>
+        </div>
+        <main class="mx-auto w-full max-w-7xl px-4 py-8 sm:px-6 lg:px-8">

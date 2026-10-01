@@ -1,4 +1,5 @@
-    </main>
+        </main>
+    </div>
 
     <!-- Notification Toast -->
     <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-[#13324a] text-white px-5 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
@@ -7,6 +8,26 @@
     </div>
 
     <script src="js/ajax-tables.js"></script>
+    <script src="../js/case-videos.js"></script>
+    <script>
+        (function () {
+            const sidebar = document.getElementById('admin-sidebar');
+            const backdrop = document.getElementById('admin-sidebar-backdrop');
+            const open = document.getElementById('admin-sidebar-open');
+            const close = document.getElementById('admin-sidebar-close');
+            function setOpen(value) {
+                sidebar.classList.toggle('-translate-x-full', !value);
+                backdrop.classList.toggle('hidden', !value);
+                open.setAttribute('aria-expanded', value ? 'true' : 'false');
+                document.body.classList.toggle('overflow-hidden', value);
+            }
+            open.addEventListener('click', () => setOpen(true));
+            close.addEventListener('click', () => setOpen(false));
+            backdrop.addEventListener('click', () => setOpen(false));
+            document.addEventListener('keydown', event => { if (event.key === 'Escape') setOpen(false); });
+            window.addEventListener('resize', () => { if (window.innerWidth >= 1024) setOpen(false); });
+        })();
+    </script>
     <script>
         function showToast(message) {
             const toast = document.getElementById('toast');

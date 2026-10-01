@@ -43,6 +43,10 @@ const translations = {
         service2_point2: 'Choose a proposed appointment.',
         service2_point3: 'Track the request and surgeon assignment.',
 
+        cases_badge: 'Real cases',
+        cases_title: 'Real implant cases in video',
+        cases_intro: 'Explore examples from clinical cases. Videos load only when you choose to play them.',
+
         workflow_badge: 'How It Works',
         workflow_title: 'From clinic registration to completion in four steps',
         workflow_intro: 'The account, request, review, payment when required, and follow-up all happen through one clear path.',
@@ -149,6 +153,10 @@ const translations = {
         service2_point1: 'تسجيل بيانات الحالة.',
         service2_point2: 'اختيار موعد مقترح.',
         service2_point3: 'متابعة حالة الطلب وتعيين الجرّاح.',
+
+        cases_badge: 'حالات حقيقية',
+        cases_title: 'فيديوهات حالات زراعة حقيقية',
+        cases_intro: 'شاهد أمثلة من الحالات الطبية. لا يبدأ تحميل الفيديو إلا عند اختيار تشغيله.',
 
         workflow_badge: 'كيف تعمل المنصة',
         workflow_title: 'من تسجيل العيادة إلى اكتمال الطلب في أربع خطوات',

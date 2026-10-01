@@ -1,3 +1,8 @@
+<?php
+define('EASYIMPLANT_SKIP_SESSION', true);
+require_once __DIR__ . '/includes/db_connect.php';
+require_once __DIR__ . '/includes/case_videos.php';
+?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr" class="scroll-smooth">
 
@@ -41,6 +46,7 @@
     </script>
 
     <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/case-videos.css" />
 </head>
 
 <body class="home-page bg-white text-brand-navy selection:bg-brand-blue selection:text-white">
@@ -175,6 +181,8 @@
                     </div>
                 </div>
             </section>
+
+            <?php renderCaseVideos($pdo); ?>
 
             <section id="workflow" class="journey-section workflow-section" aria-labelledby="workflow-title">
                 <div class="section-shell mx-auto max-w-7xl px-5 sm:px-6 lg:px-8">
@@ -349,6 +357,7 @@
     <?php include 'includes/footer.php'; ?>
 
     <script src="js/translations.js"></script>
+    <script src="js/case-videos.js"></script>
     <script src="js/main.js"></script>
 </body>
 

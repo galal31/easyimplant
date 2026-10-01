@@ -7,13 +7,14 @@ function caseVideoEmbedUrl(string $url): ?string
         return null;
     }
     $parts = parse_url($url);
+    $host = strtolower($parts['host'] ?? '');
     if (!$parts || strtolower($parts['scheme'] ?? '') !== 'https'
-        || strtolower($parts['host'] ?? '') !== 'iframe.mediadelivery.net'
+        || !in_array($host, ['iframe.mediadelivery.net', 'player.mediadelivery.net'], true)
         || isset($parts['user']) || isset($parts['pass']) || isset($parts['port'])
         || !preg_match('~^/embed/[0-9]+/[a-f0-9-]{36}/?$~i', $parts['path'] ?? '')) {
         return null;
     }
-    return 'https://iframe.mediadelivery.net' . rtrim($parts['path'], '/');
+    return 'https://' . $host . rtrim($parts['path'], '/');
 }
 
 function renderCaseVideoPlayer(string $url, string $title): void
@@ -35,7 +36,7 @@ function renderCaseVideoPlayer(string $url, string $title): void
 function renderCaseVideos(PDO $pdo, int $limit = 6): void
 {
     try {
-        $stmt = $pdo->query("SELECT title, description, video_url FROM videos WHERE video_url LIKE 'https://iframe.mediadelivery.net/embed/%' ORDER BY created_at DESC, id DESC LIMIT " . (int) $limit);
+        $stmt = $pdo->query("SELECT title, description, video_url FROM videos WHERE video_url LIKE 'https://iframe.mediadelivery.net/embed/%' OR video_url LIKE 'https://player.mediadelivery.net/embed/%' ORDER BY created_at DESC, id DESC LIMIT " . (int) $limit);
         $videos = [];
         foreach ($stmt as $video) {
             if (caseVideoEmbedUrl((string) $video['video_url']) !== null) {

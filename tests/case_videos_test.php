@@ -8,8 +8,9 @@ function checkCaseVideo(bool $condition, string $message): void
     if (!$condition) throw new RuntimeException($message);
 }
 
-$validUrl = 'https://iframe.mediadelivery.net/embed/12345/12345678-1234-1234-1234-123456789abc';
+$validUrl = 'https://player.mediadelivery.net/embed/651916/2184b24d-1217-4a1c-adcd-8aaff03c9f10';
 checkCaseVideo(caseVideoEmbedUrl($validUrl) === $validUrl, 'Bunny URL rejected');
+checkCaseVideo(caseVideoEmbedUrl('https://iframe.mediadelivery.net/embed/651916/2184b24d-1217-4a1c-adcd-8aaff03c9f10') !== null, 'Legacy Bunny URL rejected');
 checkCaseVideo(caseVideoEmbedUrl('https://evil.example/embed/12345/12345678-1234-1234-1234-123456789abc') === null, 'Other host accepted');
 checkCaseVideo(caseVideoEmbedUrl('javascript:alert(1)') === null, 'Unsafe URL accepted');
 
@@ -34,7 +35,7 @@ try {
 
     ob_start(); renderCaseVideos($pdo); $publicHtml = ob_get_clean();
     checkCaseVideo(str_contains($publicHtml, 'Test case'), 'Public case missing');
-    checkCaseVideo(str_contains($publicHtml, 'data-video-src='), 'Lazy play control missing');
+    checkCaseVideo(str_contains($publicHtml, 'data-video-src="' . $validUrl . '"'), 'Lazy play control missing');
     checkCaseVideo(!str_contains($publicHtml, '<iframe'), 'Video loaded before click');
 
     $_POST = ['csrf_token' => $_SESSION['case_videos_csrf_token'], 'action' => 'save', 'id' => (string) $id, 'title' => 'Edited case', 'description' => 'Updated description', 'video_url' => $validUrl];

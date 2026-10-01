@@ -26,7 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (mb_strlen($form['description']) > 5000) {
             $error = 'Description must be 5,000 characters or fewer.';
         } elseif (caseVideoEmbedUrl($form['video_url']) === null) {
-            $error = 'Paste a Bunny Stream embed link beginning with https://iframe.mediadelivery.net/embed/';
+            $error = 'Paste a Bunny Stream embed link from player.mediadelivery.net or iframe.mediadelivery.net.';
         } else {
             try {
                 if ($form['id']) {
@@ -80,7 +80,7 @@ $videosTable = adminTableState($videos, ['title', 'description', 'video_url', 'c
             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['case_videos_csrf_token'], ENT_QUOTES, 'UTF-8') ?>"><input type="hidden" name="action" value="save"><input type="hidden" name="id" id="case-video-id" value="<?= (int) $form['id'] ?>">
             <div><label for="case-title" class="block text-sm font-bold text-[#13324a] mb-2">Case name</label><input id="case-title" type="text" name="title" maxlength="255" required value="<?= htmlspecialchars($form['title'], ENT_QUOTES, 'UTF-8') ?>" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"></div>
             <div><label for="case-description" class="block text-sm font-bold text-[#13324a] mb-2">Description</label><textarea id="case-description" name="description" maxlength="5000" rows="4" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"><?= htmlspecialchars($form['description'], ENT_QUOTES, 'UTF-8') ?></textarea></div>
-            <div><label for="case-url" class="block text-sm font-bold text-[#13324a] mb-2">Bunny video link</label><input id="case-url" type="url" name="video_url" maxlength="2048" required placeholder="https://iframe.mediadelivery.net/embed/..." value="<?= htmlspecialchars($form['video_url'], ENT_QUOTES, 'UTF-8') ?>" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"><p class="text-xs text-slate-500 mt-2">In Bunny Stream, copy the video’s Embed URL and paste it here.</p></div>
+            <div><label for="case-url" class="block text-sm font-bold text-[#13324a] mb-2">Bunny video link</label><input id="case-url" type="url" name="video_url" maxlength="2048" required placeholder="https://player.mediadelivery.net/embed/..." value="<?= htmlspecialchars($form['video_url'], ENT_QUOTES, 'UTF-8') ?>" class="w-full border border-slate-300 rounded-xl px-4 py-2.5 text-sm bg-slate-50 focus:bg-white"><p class="text-xs text-slate-500 mt-2">In Bunny Stream, copy the video’s Embed URL and paste it here.</p></div>
             <button type="submit" class="w-full bg-[#13324a] hover:bg-[#1d5f8c] text-white px-4 py-2.5 rounded-xl text-sm font-bold transition">Save video</button>
             <button id="case-video-cancel" type="button" class="<?= $form['id'] ? '' : 'hidden ' ?>w-full text-sm font-semibold text-slate-600 hover:text-[#13324a]">Cancel editing</button>
         </form>

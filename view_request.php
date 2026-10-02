@@ -26,6 +26,7 @@ if (empty($_SESSION['request_workflow_csrf_token'])) {
     $_SESSION['request_workflow_csrf_token'] = bin2hex(random_bytes(32));
 }
 $request_workflow_csrf_token = $_SESSION['request_workflow_csrf_token'];
+$hasPaymentError = !empty($_GET['payment_error']) || !empty($_GET['xpay_error']);
 
 $request_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
@@ -455,7 +456,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <?php if ((float) ($details['total_price'] ?? 0) > 0): ?>
                                         <p class="text-2xl font-extrabold text-[#13324a]"><?= htmlspecialchars(formatMoney($details['total_price'])) ?></p>
                                         <p class="mt-2 text-sm text-slate-600">Work begins after the full payment is completed.</p>
-                                        <?php if (!empty($_GET['payment_error'])): ?>
+                                        <?php if ($hasPaymentError): ?>
                                             <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment could not be started. Please try again or contact support.</p>
                                         <?php endif; ?>
                                         <?php if (xpayIsConfigured()): ?>
@@ -625,7 +626,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                         <div class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
                                             <p class="font-bold"><i class="fa-solid fa-circle-check mr-2"></i>The plan is approved.</p>
                                             <p class="mt-1 text-xs leading-5">Complete the full payment online. Production starts after payment is completed.</p>
-                                            <?php if (!empty($_GET['payment_error'])): ?>
+                                            <?php if ($hasPaymentError): ?>
                                                 <div class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
                                                     The checkout could not be started. Please try again, or contact support if the problem continues.
                                                 </div>

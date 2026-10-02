@@ -172,6 +172,7 @@ try {
     if ($pdo->inTransaction()) {
         $pdo->rollBack();
     }
+    error_log('Checkout not payable for request ' . (int) $requestId . ': ' . $e->getMessage());
     header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=not_payable', true, 303);
     exit;
 } catch (Throwable $e) {

@@ -7,36 +7,48 @@ require_once __DIR__ . '/../includes/case_videos.php';
 if (APP_ENVIRONMENT !== 'local') throw new RuntimeException('Demo data is restricted to the local database.');
 
 $profiles = [
-    ['demo-ahmed','د. أحمد — ملف تجريبي','زراعة الأسنان والجراحة الموجهة'],
-    ['demo-mariam','د. مريم — ملف تجريبي','التخطيط الرقمي وتصميم الأدلة الجراحية'],
-    ['demo-omar','د. عمر — ملف تجريبي','تركيبات الأسنان والتأهيل الوظيفي'],
+    ['ahmed-arafa','د. أحمد عرفة','زراعة الأسنان والجراحة الموجهة — مثال للعرض','arafa.jpeg'],
+    ['ahmed-hany','د. أحمد هاني','التخطيط الرقمي وتركيبات الأسنان — مثال للعرض','hany.jpeg'],
 ];
-$caseTitles = ['حالة تجريبية — زراعة موجهة','حالة تجريبية — تأهيل الفك بالكامل','حالة تجريبية — التخطيط الرقمي'];
+$caseTitles = ['زراعة ضرس باستخدام دليل جراحي','تأهيل الفك بالكامل — All-on-4','التخطيط الرقمي لزراعة الأسنان الأمامية'];
+$caseDescriptions = [
+    'نموذج عرض لحالة تعويض ضرس مفقود بزرعة مع التخطيط لموضعها باستخدام دليل جراحي، وإظهار مشاركة فريق التخطيط والتنفيذ.',
+    'نموذج عرض لإعادة تأهيل فك كامل باستخدام أربع زرعات، مع تقديم مراحل التخطيط الجراحي وتصميم التعويض النهائي.',
+    'نموذج عرض للتخطيط الرقمي لتعويض الأسنان الأمامية، يجمع بين موضع الزرعات وشكل التركيبات المقترحة وتنسيق عمل الفريق.',
+];
 $url = 'https://player.mediadelivery.net/embed/651916/2184b24d-1217-4a1c-adcd-8aaff03c9f10';
 $pdo->beginTransaction();
 try {
     $ids = [];
-    foreach ($profiles as [$slug,$name,$specialty]) {
+    foreach ($profiles as [$slug,$name,$specialty,$image]) {
         $find = $pdo->prepare('SELECT id FROM doctors WHERE slug=?');
         $find->execute([$slug]);
         $id = $find->fetchColumn();
-        if (!$id) $id = saveDoctor($pdo, [
+        if (!$id) {
+            $photo = 'uploads/doctors/doctor-' . md5('local-demo-' . $slug) . '.jpg';
+            $directory = __DIR__ . '/../uploads/doctors';
+            if (!is_dir($directory) && !mkdir($directory,0755,true)) throw new RuntimeException('Could not create photo directory.');
+            if (!is_file(__DIR__ . '/../' . $photo) && !copy(__DIR__ . '/../images/doctors/' . $image,__DIR__ . '/../' . $photo)) throw new RuntimeException('Could not copy demo portrait.');
+            $id = saveDoctor($pdo, [
             'display_name'=>$name, 'slug'=>$slug, 'specialty'=>$specialty,
-            'short_bio'=>'هذا ملف تجريبي لمعاينة تصميم الصفحة وربط الطبيب بالحالات. الاسم والخبرات هنا أمثلة توضيحية وليست بيانات مهنية حقيقية.',
-            'qualifications'=>"مؤهل تجريبي في طب الأسنان\nتدريب تجريبي على التخطيط الرقمي\nمشاركة تجريبية ضمن فريق الحالة",
-            'is_published'=>1,
-        ]);
+            'short_bio'=>$slug === 'ahmed-arafa'
+                ? 'نبذة تجريبية: يركز هذا النموذج على زراعة الأسنان والجراحة الموجهة، بدءًا من دراسة الحالة وتحديد مواضع الزرعات، مرورًا بتصميم الدليل الجراحي، وحتى تنسيق العمل مع فريق التركيبات. التخصص والوصف أمثلة لمعاينة الصفحة وليسا معلومات مهنية موثقة عن الطبيب.'
+                : 'نبذة تجريبية: يركز هذا النموذج على دمج التخطيط الرقمي مع تصميم تركيبات الأسنان، وتحويل خطة العلاج إلى خطوات واضحة يتعاون فيها فريق الجراحة والتركيبات. التخصص والوصف أمثلة لمعاينة الصفحة وليسا معلومات مهنية موثقة عن الطبيب.',
+            'qualifications'=>"بيانات تجريبية للمؤهلات — تُستبدل بالمؤهلات الفعلية\nمجال تدريبي توضيحي: التخطيط الرقمي للحالات\nمجال تدريبي توضيحي: تنسيق الجراحة والتركيبات",
+            'photo_path'=>$photo, 'is_published'=>1,
+            ]);
+        }
         $ids[] = (int) $id;
     }
-    $teams = [[$ids[0],$ids[1]],[$ids[0],$ids[2]],[$ids[1],$ids[2]]];
+    $teams = [[$ids[0],$ids[1]],[$ids[0],$ids[1]],[$ids[1],$ids[0]]];
     foreach ($caseTitles as $position=>$title) {
         $find = $pdo->prepare('SELECT id FROM videos WHERE title=?');
         $find->execute([$title]);
         if (!$find->fetchColumn()) saveCaseVideo($pdo, [
             'title'=>$title,
-            'description'=>'بيانات تجريبية لمعاينة معرض الحالات وأسماء الفريق. جميع الأمثلة تستخدم نفس رابط Bunny المرسل للاختبار؛ العنوان والوصف لا يصفان محتوى الفيديو الفعلي.',
+            'description'=>$caseDescriptions[$position] . ' بيانات توضيحية فقط: الفيديو المستخدم هو رابط Bunny التجريبي نفسه، ولا يوثق الحالة المسماة أو مشاركة الأطباء فيها.',
             'video_url'=>$url,
-        ], $teams[$position], ['التنفيذ والتخطيط — تجريبي','المشاركة في الحالة — تجريبي']);
+        ], $teams[$position], $position === 2 ? ['التخطيط الرقمي والتركيبات — تجريبي','مراجعة الخطة الجراحية — تجريبي'] : ['الجراحة الموجهة — تجريبي','التخطيط والتركيبات — تجريبي']);
     }
     foreach ($profiles as [$slug]) {
         $doctor = getPublishedDoctor($pdo,$slug);
@@ -46,7 +58,7 @@ try {
     $check->execute($caseTitles);
     if ((int) $check->fetchColumn() !== 6) throw new RuntimeException('Demo teams were not saved correctly.');
     $pdo->commit();
-    echo "Demo ready: 3 published doctors, 3 videos, 6 team links. Existing records preserved.\n";
+    echo "Demo ready: 2 named published doctors with portraits, 3 dental cases, 6 team links. Existing records preserved.\n";
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     throw $e;

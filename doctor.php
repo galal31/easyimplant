@@ -51,7 +51,6 @@ $qualifications = $doctor ? array_values(array_filter(array_map('trim', preg_spl
             <section class="doctor-intro profile-shell" aria-labelledby="doctor-name">
                 <div class="doctor-intro-copy">
                     <a href="index.php#real-cases" class="profile-back-link"><i class="fa-solid fa-arrow-left" aria-hidden="true"></i><span data-i18n="profile_back_cases">Explore real cases</span></a>
-                    <p class="profile-eyebrow" data-i18n="profile_eyebrow">Meet the doctor</p>
                     <h1 id="doctor-name" dir="auto"><?= $escape($doctor['display_name']) ?></h1>
                     <?php if ($doctor['specialty']): ?><p class="doctor-specialty" dir="auto"><?= $escape($doctor['specialty']) ?></p><?php endif; ?>
                     <?php if ($doctor['short_bio']): ?><p class="doctor-summary" dir="auto"><?= nl2br($escape($doctor['short_bio'])) ?></p><?php endif; ?>
@@ -59,7 +58,7 @@ $qualifications = $doctor ? array_values(array_filter(array_map('trim', preg_spl
                 </div>
                 <figure class="doctor-portrait">
                     <?php if ($doctor['photo_path']): ?><img src="<?= $escape($doctor['photo_path']) ?>" alt="<?= $escape($doctor['display_name']) ?>" width="720" height="900" fetchpriority="high"><?php else: ?><div class="doctor-portrait-placeholder" aria-hidden="true"><span><?= $escape(mb_substr($doctor['display_name'], 0, 1)) ?></span></div><?php endif; ?>
-                    <figcaption><span data-i18n="profile_eyebrow">Meet the doctor</span><span><?= $escape($doctor['display_name']) ?></span></figcaption>
+                    <figcaption><span><?= $escape($doctor['display_name']) ?></span></figcaption>
                 </figure>
             </section>
             <?php if ($qualifications): ?>

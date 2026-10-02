@@ -7,6 +7,11 @@ require_once __DIR__ . '/../includes/case_videos.php';
 if (APP_ENVIRONMENT !== 'local') throw new RuntimeException('Demo data is restricted to the local database.');
 
 $refresh = in_array('--refresh-content', $argv, true);
+$refreshQualifications = in_array('--refresh-qualifications', $argv, true);
+$qualificationsBySlug = [
+    'ahmed-arafa'=>"التخطيط الرقمي لمواضع زراعة الأسنان\nالجراحة الموجهة باستخدام الأدلة الجراحية\nتنسيق خطة الزراعة مع التركيبات النهائية",
+    'ahmed-hany'=>"التخطيط الرقمي لتركيبات الأسنان\nتصميم التعويضات المدعومة بالزرعات\nدراسة الإطباق وتناسق الابتسامة",
+];
 $profiles = [
     ['ahmed-arafa','د. أحمد عرفة','زراعة الأسنان والجراحة الموجهة','arafa.jpeg'],
     ['ahmed-hany','د. أحمد هاني','التخطيط الرقمي وتركيبات الأسنان','hany.jpeg'],
@@ -25,6 +30,9 @@ try {
         $find = $pdo->prepare('SELECT id FROM doctors WHERE slug=?');
         $find->execute([$slug]);
         $id = $find->fetchColumn();
+        if ($id && $refreshQualifications) {
+            $pdo->prepare('UPDATE doctors SET qualifications=? WHERE id=?')->execute([$qualificationsBySlug[$slug],$id]);
+        }
         if (!$id || $refresh) {
             $existing = $id ? getDoctor($pdo, (int) $id) : [];
             $photo = 'uploads/doctors/doctor-' . md5('local-demo-' . $slug) . '.jpg';
@@ -36,7 +44,7 @@ try {
             'short_bio'=>$slug === 'ahmed-arafa'
                 ? 'زراعة الأسنان والجراحة الموجهة تجمع بين دراسة الحالة والتخطيط الرقمي لمواضع الزرعات وتصميم الدليل الجراحي. ويكتمل مسار العلاج بتنسيق خطة الجراحة مع تصميم التركيبات لتحقيق التوازن بين وظيفة الأسنان وشكل الابتسامة.'
                 : 'التخطيط الرقمي وتركيبات الأسنان يربطان بين تفاصيل الحالة وتصميم التعويض النهائي. ويشمل هذا المجال دراسة تناسق الابتسامة وعلاقة الأسنان بالفكين وتنسيق خطوات العمل بين الجراحة والتركيبات.',
-            'qualifications'=>'',
+            'qualifications'=>$qualificationsBySlug[$slug],
             'photo_path'=>$existing['photo_path'] ?? $photo, 'is_published'=>$existing['is_published'] ?? 1,
             ]), (int) $id);
         }
@@ -57,6 +65,7 @@ try {
     foreach ($profiles as [$slug]) {
         $doctor = getPublishedDoctor($pdo,$slug);
         if (!$doctor) throw new RuntimeException('Demo profile was not published.');
+        if ($refreshQualifications && $doctor['qualifications'] !== $qualificationsBySlug[$slug]) throw new RuntimeException('Qualifications were not saved.');
         if ($refresh && preg_match('/تجريب|توضيح|مثال للعرض/u', implode(' ', [$doctor['specialty'],$doctor['short_bio'],$doctor['qualifications']]))) throw new RuntimeException('Profile content was not refreshed.');
     }
     $check = $pdo->prepare('SELECT COUNT(*) FROM video_doctors vd JOIN videos v ON v.id=vd.video_id WHERE v.title IN (?,?,?)');

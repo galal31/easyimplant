@@ -1,6 +1,7 @@
 <?php
 // api/login.php
 require_once '../includes/db_connect.php';
+require_once __DIR__ . '/../includes/login_destination.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -58,7 +59,7 @@ try {
         http_response_code(200); // OK
         echo json_encode([
             'success' => 'Logged in successfully.',
-            'redirect' => $user['role'] === 'admin' ? 'admin/admin_dashboard.php' : 'clinic_dashboard.php'
+            'redirect' => loginDestination($pdo, $user, $_POST['request_id'] ?? null)
         ]);
         exit;
     } else {

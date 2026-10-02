@@ -14,7 +14,8 @@ use Aws\Exception\AwsException;
 
 // Check if user is logged in and is a clinic
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'clinic') {
-    header("Location: login.php");
+    $returnRequestId = filter_var($_GET['id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+    header('Location: login.php' . ($returnRequestId ? '?request_id=' . (int) $returnRequestId : ''));
     exit;
 }
 

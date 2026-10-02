@@ -2,6 +2,7 @@
 require_once __DIR__ . '/includes/db_connect.php';
 require_once __DIR__ . '/includes/system_settings.php';
 $loginSystemIconUrl = getSystemIconUrl($pdo);
+$returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr" class="scroll-smooth">
@@ -32,6 +33,7 @@ $loginSystemIconUrl = getSystemIconUrl($pdo);
         </div>
 
         <form id="loginForm" class="space-y-5">
+            <?php if ($returnRequestId): ?><input type="hidden" name="request_id" value="<?= (int) $returnRequestId ?>"><?php endif; ?>
             <div id="errorMsg" class="hidden bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-100"></div>
 
             <div>

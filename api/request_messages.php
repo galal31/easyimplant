@@ -32,7 +32,7 @@ if (!requestWorkflowCsrfIsValid(trim((string) ($_GET['csrf_token'] ?? '')))) {
 }
 
 try {
-    $request = requireSurgicalGuideConversationAccess(
+    $request = requireRequestConversationAccess(
         $pdo,
         (int) $requestId,
         (int) $_SESSION['user_id'],
@@ -61,7 +61,7 @@ try {
     echo json_encode([
         'success' => true,
         'messages' => $messages,
-        'writable' => surgicalGuideChatIsWritable($request['status']),
+        'writable' => requestChatIsWritable($request),
     ]);
 } catch (RuntimeException $e) {
     http_response_code(404);

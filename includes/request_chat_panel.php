@@ -98,7 +98,7 @@
         <?php else: ?>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                 <i class="fa-solid fa-lock mr-2 text-slate-400"></i>
-                This conversation is read-only because the request is completed or rejected.
+                This conversation is read-only because the request is completed, rejected or cancelled.
             </div>
         <?php endif; ?>
     </div>

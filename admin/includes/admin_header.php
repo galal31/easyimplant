@@ -20,6 +20,7 @@ $adminNav = [
     ['admin_guide_pricing.php', 'Pricing', 'fa-tags', ['admin_guide_pricing.php']],
     ['admin_surgeon_travel_pricing.php', 'Travel', 'fa-car', ['admin_surgeon_travel_pricing.php']],
     ['admin_surgeon_services.php', 'Services', 'fa-user-doctor', ['admin_surgeon_services.php']],
+    ['admin_surgeons.php', 'Surgeons', 'fa-user-md', ['admin_surgeons.php', 'admin_surgeon_history.php']],
     ['admin_videos.php', 'Case Videos', 'fa-video', ['admin_videos.php']],
     ['admin_doctors.php', 'Doctors', 'fa-user-doctor', ['admin_doctors.php']],
     ['admin_settings.php', 'Settings', 'fa-gear', ['admin_settings.php']],

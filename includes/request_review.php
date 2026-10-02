@@ -39,6 +39,25 @@ function surgicalGuideChatIsWritable(string $status): bool
     return in_array($status, ['pending_review', 'awaiting_clinic_approval', 'pending_payment', 'in_progress'], true);
 }
 
+function requestChatIsWritable(array $request): bool
+{
+    return $request['service_type']==='surgical_guide'
+        ? surgicalGuideChatIsWritable($request['status'])
+        : ($request['service_type']==='surgeon_request' && in_array($request['status'],['pending_review','pending_payment','in_progress'],true));
+}
+
+function requireRequestConversationAccess(PDO $pdo, int $requestId, int $userId, string $role, bool $forUpdate=false): array
+{
+    if (!in_array($role,['admin','clinic'],true)) throw new RuntimeException('Conversation unavailable.');
+    $sql='SELECT id,user_id,service_type,status FROM requests WHERE id=?';
+    $params=[$requestId];
+    if ($role==='clinic') { $sql.=' AND user_id=?'; $params[]=$userId; }
+    if ($forUpdate) $sql.=' FOR UPDATE';
+    $stmt=$pdo->prepare($sql); $stmt->execute($params); $request=$stmt->fetch();
+    if (!$request || !in_array($request['service_type'],['surgical_guide','surgeon_request'],true)) throw new RuntimeException('Request not found or unavailable to your account.');
+    return $request;
+}
+
 function requestReviewAllowedFiles(): array
 {
     return [

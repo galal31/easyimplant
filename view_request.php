@@ -7,6 +7,7 @@ require_once 'includes/surgeon_services.php';
 require_once 'includes/r2_config.php';
 require_once 'includes/request_file_metadata.php';
 require_once 'includes/request_workflow.php';
+require_once 'includes/surgeon_operations.php';
 require_once 'includes/request_review.php';
 require_once 'includes/xpay.php';
 
@@ -83,14 +84,6 @@ try {
         $stmt_kit_files->execute([':id' => $request_id]);
         $guideKitFiles = $stmt_kit_files->fetchAll();
 
-        $stmt_arches = $pdo->prepare("SELECT * FROM surgeon_request_arches WHERE request_id = :id ORDER BY FIELD(arch_position, 'upper', 'lower')");
-        $stmt_arches->execute([':id' => $request_id]);
-        $surgeonArches = $stmt_arches->fetchAll();
-
-        $stmt_files = $pdo->prepare("SELECT * FROM surgeon_request_files WHERE request_id = :id ORDER BY file_category, created_at, id");
-        $stmt_files->execute([':id' => $request_id]);
-        $surgeonFiles = $stmt_files->fetchAll();
-
         // If the request is completed, fetch all deliverables from the new table
         if ($request['status'] === 'completed') {
             $stmt_deliverables = $pdo->prepare("SELECT file_type, file_path, original_name, content_type, file_size FROM request_deliverables WHERE request_id = :id ORDER BY created_at, id");
@@ -104,13 +97,12 @@ try {
         $reviewPackages = fetchRequestReviewPackages($pdo, (int) $request_id);
         $requestMessages = fetchRequestMessages($pdo, (int) $request_id);
     } else {
-        $stmt_details = $pdo->prepare("SELECT sr.*, u.full_name as surgeon_name 
-                                       FROM surgeon_requests sr 
-                                       LEFT JOIN users u ON sr.assigned_surgeon_id = u.id 
-                                       WHERE sr.request_id = :id");
+        $stmt_details = $pdo->prepare("SELECT sr.*, sr.surgeon_name_snapshot AS surgeon_name FROM surgeon_requests sr WHERE sr.request_id = :id");
         $stmt_details->execute([':id' => $request_id]);
         $details = $stmt_details->fetch();
-
+        $stmt_arches=$pdo->prepare("SELECT * FROM surgeon_request_arches WHERE request_id=? ORDER BY FIELD(arch_position,'upper','lower')"); $stmt_arches->execute([$request_id]); $surgeonArches=$stmt_arches->fetchAll();
+        $stmt_files=$pdo->prepare('SELECT * FROM surgeon_request_files WHERE request_id=? ORDER BY file_category,created_at,id'); $stmt_files->execute([$request_id]); $surgeonFiles=$stmt_files->fetchAll();
+        $requestMessages=fetchRequestMessages($pdo,(int)$request_id);
     }
 
     // Fetch payment details if they exist
@@ -123,7 +115,12 @@ try {
     die("Database error occurred.");
 }
 
-function getStatusBadge($status) {
+function getStatusBadge($status, $serviceType = null) {
+    if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
+    if ($serviceType === 'surgeon_request') {
+        $label = ['pending_review'=>'Review & coordination','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed'][$status] ?? null;
+        if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
+    }
     $badges = [
         'pending_review' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
         'awaiting_clinic_approval' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Your Approval</span>',
@@ -153,7 +150,7 @@ $guideDisplayFields = [
 ];
 
 $isSurgicalGuide = $request['service_type'] === 'surgical_guide';
-$isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['status']);
+$isChatWritable  = requestChatIsWritable($request);
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -202,6 +199,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
 
         /* ── Chat column: hide on mobile, show on desktop ── */
         .chat-column { display: none; }
+        .surgeon-workspace .chat-column { align-self: stretch; }
         @media (min-width: 1024px) {
             .chat-column { display: block; }
         }
@@ -387,7 +385,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                 <h1 class="text-2xl font-bold text-[#13324a]">Request #<?= str_pad($request['id'], 5, '0', STR_PAD_LEFT) ?></h1>
                 <p class="text-sm text-slate-500 mt-0.5">Submitted on <?= date('F j, Y', strtotime($request['created_at'])) ?> · <?= $isSurgicalGuide ? 'Surgical Guide' : 'Surgeon Request' ?></p>
             </div>
-            <div class="shrink-0"><?= getStatusBadge($request['status']) ?></div>
+            <div class="shrink-0"><?= getStatusBadge($request['status'], $request['service_type']) ?></div>
         </div>
 
         <?php if ($request['status'] === 'rejected' && !empty($request['rejection_reason'])): ?>
@@ -420,7 +418,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
         <?php endif; ?>
 
         <!-- ══ Two-column workspace grid ══ -->
-        <div class="workspace-grid">
+        <div class="workspace-grid <?= $isSurgicalGuide ? '' : 'surgeon-workspace' ?>">
 
             <!-- ── Main content column ── -->
             <div class="space-y-5">
@@ -447,6 +445,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                             </div>
                         </div>
 
+                        <?php require __DIR__ . '/includes/surgeon_operation_panel.php'; ?>
                         <?php if ($request['status'] === 'pending_payment'): ?>
                             <div class="case-card">
                                 <div class="case-card-header">
@@ -454,16 +453,17 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                     <h2 class="text-lg font-bold text-[#13324a]">Online payment</h2>
                                 </div>
                                 <div class="case-card-body">
-                                    <?php if ((float) ($details['total_price'] ?? 0) > 0): ?>
+                                    <?php if ((float) ($details['total_price'] ?? 0) > 0 && surgeonOperationIsReady($details)): ?>
                                         <p class="text-2xl font-extrabold text-[#13324a]"><?= htmlspecialchars(formatMoney($details['total_price'])) ?></p>
-                                        <p class="mt-2 text-sm text-slate-600">Work begins after the full payment is completed.</p>
+                                        <p class="mt-2 text-sm text-slate-600">Full payment confirms your agreement to the surgeon, appointment and final price shown above.</p>
                                         <?php if ($hasPaymentError): ?>
-                                            <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment could not be started. Please try again or contact support.</p>
+                                            <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"><?= ($_GET['payment_error'] ?? '')==='operation_changed' ? 'The operation details changed. Review the updated surgeon, appointment and final price before paying.' : 'Payment could not be started. Please try again or contact support.' ?></p>
                                         <?php endif; ?>
                                         <?php if (xpayIsConfigured()): ?>
                                             <form method="post" action="api/create_xpay_checkout.php" class="mt-4">
                                                 <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>" />
                                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($request_workflow_csrf_token) ?>" />
+                                                <input type="hidden" name="operation_fingerprint" value="<?= htmlspecialchars(surgeonOperationFingerprint($details)) ?>" />
                                                 <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#13324a]"><i class="fa-solid fa-lock mr-2"></i>Pay now</button>
                                             </form>
                                         <?php else: ?>
@@ -817,7 +817,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
             </div><!-- end main column -->
 
             <!-- ── Chat column (desktop sticky) ── -->
-            <?php if ($isSurgicalGuide): ?>
+            <?php if (in_array($request['service_type'], ['surgical_guide','surgeon_request'], true)): ?>
             <div class="chat-column">
                 <div id="chatColumnWrapper">
                     <?php include __DIR__ . '/includes/request_chat_panel.php'; ?>
@@ -828,7 +828,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
         </div><!-- end workspace-grid -->
     </div><!-- end page container -->
 
-    <?php if ($isSurgicalGuide): ?>
+    <?php if (in_array($request['service_type'], ['surgical_guide','surgeon_request'], true)): ?>
     <!-- ══ Mobile Chat: FAB + Attention Bubble + Drawer ══ -->
     <button
         id="chatFabButton"

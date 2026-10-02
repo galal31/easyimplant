@@ -1,7 +1,12 @@
 <?php
 // admin_functions.php
 
-function getStatusBadge($status) {
+function getStatusBadge($status, $serviceType = null) {
+    if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
+    if ($serviceType === 'surgeon_request') {
+        $label = ['pending_review'=>'Review & coordination','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed'][$status] ?? null;
+        if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
+    }
     $badges = [
         'pending_review' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
         'awaiting_clinic_approval' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Clinic Approval</span>',

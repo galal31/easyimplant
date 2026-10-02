@@ -3,6 +3,7 @@
 require_once '../includes/db_connect.php';
 require_once '../includes/request_workflow.php';
 require_once '../includes/surgical_guide_pricing.php';
+require_once '../includes/surgeon_operations.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -22,7 +23,7 @@ $request_id = filter_input(INPUT_POST, 'request_id', FILTER_VALIDATE_INT);
 $status = trim($_POST['status'] ?? '');
 $reason = trim($_POST['reason'] ?? '');
 
-$allowed_statuses = ['pending_review', 'pending_payment', 'in_progress', 'completed', 'rejected'];
+$allowed_statuses = ['pending_review', 'pending_payment', 'in_progress', 'completed', 'rejected', 'cancelled'];
 
 if (!$request_id || !in_array($status, $allowed_statuses, true)) {
     http_response_code(400);
@@ -89,11 +90,25 @@ try {
             echo json_encode(['error' => 'This status change is not allowed from the current request step. Please refresh the page.']);
             exit;
         }
-        if ($status === 'rejected' && $reason === '') {
+        if (in_array($status, ['rejected','cancelled'], true) && $reason === '') {
             $pdo->rollBack();
             http_response_code(400);
             echo json_encode(['error' => 'Rejection reason is required.']);
             exit;
+        }
+        if ($status === 'completed') {
+            $paid=$pdo->prepare("SELECT id FROM payments WHERE request_id=? AND status='approved' LIMIT 1 FOR UPDATE"); $paid->execute([$request_id]);
+            if (!$paid->fetchColumn()) throw new DomainException('No approved payment is recorded for this operation.');
+            $stmt=$pdo->prepare('SELECT * FROM surgeon_requests WHERE request_id=? FOR UPDATE'); $stmt->execute([$request_id]); $operation=$stmt->fetch();
+            if (!$operation || !surgeonOperationIsReady($operation)) throw new DomainException('Complete the surgeon and appointment details first.');
+            $performed=surgeonOperationDate((string)($_POST['performed_at'] ?? ''),false);
+            $note=trim((string)($_POST['completion_note'] ?? ''));
+            if ($note==='' || mb_strlen($note)>4000) throw new DomainException('Enter a completion note of up to 4000 characters.');
+            $pdo->prepare('UPDATE surgeon_requests SET performed_at=?,completion_note=? WHERE request_id=?')->execute([$performed,$note,$request_id]);
+            logSurgeonOperation($pdo,(int)$request_id,(int)$_SESSION['user_id'],'operation_performed',null,$performed,$note);
+        }
+        if ($status === 'cancelled') {
+            $pdo->prepare('UPDATE surgeon_requests SET financial_review_required=1 WHERE request_id=?')->execute([$request_id]);
         }
         if ($old_status === 'pending_payment' && $status === 'rejected') {
             $activeCheckoutStmt = $pdo->prepare("SELECT id FROM xpay_checkout_sessions
@@ -118,7 +133,7 @@ try {
         exit;
     }
 
-    if ($status === 'rejected') {
+    if (in_array($status, ['rejected','cancelled'], true)) {
         if ($is_surgical_guide) {
             releaseClinicFreeImplantReservation($pdo, (int) $request_id);
         }
@@ -159,7 +174,7 @@ try {
         ':actor_id' => $_SESSION['user_id'],
         ':old_value' => $old_status,
         ':new_value' => $status,
-        ':note' => $status === 'rejected' ? $reason : null,
+        ':note' => in_array($status, ['rejected','cancelled'], true) ? $reason : null,
     ]);
 
     $pdo->commit();

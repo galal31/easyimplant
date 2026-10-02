@@ -25,6 +25,8 @@ if (!$clinic_id) {
 }
 
 try {
+    $history=$pdo->prepare("SELECT id FROM requests WHERE user_id=? AND service_type='surgeon_request' LIMIT 1"); $history->execute([$clinic_id]);
+    if ($history->fetchColumn()) { http_response_code(409); echo json_encode(['error'=>'This clinic has surgeon-operation history. Pause the clinic instead of deleting it.']); exit; }
     $stmt = $pdo->prepare("DELETE FROM users WHERE id = :id AND role = 'clinic'");
     $stmt->execute([':id' => $clinic_id]);
 

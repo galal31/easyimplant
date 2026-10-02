@@ -48,7 +48,12 @@ try {
 }
 
 // Function to format status text and badge color
-function getStatusBadge($status) {
+function getStatusBadge($status, $serviceType = null) {
+    if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
+    if ($serviceType === 'surgeon_request') {
+        $label = ['pending_review'=>'Review & coordination','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed'][$status] ?? null;
+        if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
+    }
     $badges = [
         'pending_review' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
         'awaiting_clinic_approval' => '<span class="px-2.5 py-1 text-xs font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Your Approval</span>',
@@ -172,13 +177,13 @@ function getServiceType($type) {
                                     <?= date('M d, Y', strtotime($req['created_at'])) ?>
                                 </td>
                                 <td class="px-6 py-4">
-                                    <?= getStatusBadge($req['status']) ?>
+                                    <?= getStatusBadge($req['status'], $req['service_type']) ?>
                                 </td>
                                 <td class="px-6 py-4 text-right">
                                     <a href="view_request.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]">
                                         View Details
                                     </a>
-                                    <?php if ($req['status'] === 'pending_payment' && (float) ($req['payable_total'] ?? 0) > 0 && xpayIsConfigured()): ?>
+                                    <?php if ($req['service_type']==='surgical_guide' && $req['status'] === 'pending_payment' && (float) ($req['payable_total'] ?? 0) > 0 && xpayIsConfigured()): ?>
                                     <form method="post" action="api/create_xpay_checkout.php" class="ml-2 inline-block">
                                         <input type="hidden" name="request_id" value="<?= (int) $req['id'] ?>" />
                                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($requestWorkflowCsrfToken) ?>" />

@@ -34,10 +34,13 @@ try {
     $status = paymentReturnStatus($pdo,$token,'failed');
     checkReturn($status['state']==='paid' && $status['terminal'],'Confirmed payment lost to cancelled return.');
     checkReturn(!str_contains($status['message'],'in progress'),'Incorrect request state asserted.');
-    foreach (['in_progress'=>'in progress','completed'=>'completed','rejected'=>'current status'] as $requestState=>$text) {
+    foreach (['in_progress'=>'awaiting the operation','completed'=>'completed','rejected'=>'current status','cancelled'=>'Financial review'] as $requestState=>$text) {
         $pdo->prepare('UPDATE requests SET status=? WHERE id=?')->execute([$requestState,$id]);
-        checkReturn(str_contains(paymentReturnStatus($pdo,$token)['message'],$text),'Incorrect paid request message.');
+        checkReturn(str_contains(paymentReturnStatus($pdo,$token)['message'],$text),'Incorrect paid request message for '.$requestState.'.');
     }
+    $pdo->prepare("UPDATE requests SET service_type='surgical_guide',status='in_progress' WHERE id=?")->execute([$id]);
+    checkReturn(str_contains(paymentReturnStatus($pdo,$token)['message'],'in progress'),'Surgical Guide payment return message changed.');
+    $pdo->prepare("UPDATE requests SET service_type='surgeon_request' WHERE id=?")->execute([$id]);
     $pdo->prepare('UPDATE payments SET amount=1 WHERE provider_session_id=?')->execute([$session]);
     checkReturn(paymentReturnStatus($pdo,$token)['state']!=='paid','Mismatched payment accepted.');
     checkReturn(loginDestination($pdo,$user,$id)==='view_request.php?id='.$id,'Login lost request destination.');

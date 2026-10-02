@@ -31,6 +31,10 @@ if (!$request_id) {
 }
 
 try {
+    $typeStmt=$pdo->prepare('SELECT service_type FROM requests WHERE id=?'); $typeStmt->execute([$request_id]);
+    if ($typeStmt->fetchColumn()==='surgeon_request') {
+        http_response_code(409); echo json_encode(['success'=>false,'message'=>'Surgeon requests are preserved for operation history. Cancel or reject the request from its details instead.']); exit;
+    }
     ensureSurgicalGuideKitsSchema($pdo);
     // 1. تجميع مسارات الملفات المرتبطة بالطلب لمسحها من السحابة
     $filesToDelete = [];

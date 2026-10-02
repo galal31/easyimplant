@@ -2,6 +2,7 @@
 
 require_once '../includes/db_connect.php';
 require_once '../includes/request_workflow.php';
+require_once '../includes/surgeon_operations.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -27,7 +28,7 @@ if (!$requestId || !requestWorkflowCsrfIsValid(trim((string) ($_POST['csrf_token
 try {
     $pdo->beginTransaction();
     $stmt = $pdo->prepare("SELECT r.id, r.status, r.service_type, sr.requires_quote,
-            sr.estimated_total, sr.total_price
+            sr.estimated_total, sr.total_price, sr.surgeon_id, sr.surgeon_name_snapshot, sr.confirmed_operation_at
         FROM requests r
         JOIN surgeon_requests sr ON sr.request_id = r.id
         WHERE r.id = :request_id
@@ -38,8 +39,13 @@ try {
         throw new DomainException('Surgeon request not found.');
     }
 
-    if ($request['status'] !== 'pending_review') {
+    $isRevision=($_POST['action'] ?? '')==='revise';
+    if ($isRevision && $request['status']!=='pending_payment') throw new DomainException('Only unpaid payment requests can return to coordination.');
+    if (!$isRevision && $request['status'] !== 'pending_review') {
         throw new DomainException('This request is not waiting for price approval.');
+    }
+    if (!$isRevision && (!surgeonOperationIsReady($request) || new DateTimeImmutable($request['confirmed_operation_at'],new DateTimeZone('Africa/Cairo')) <= new DateTimeImmutable('now',new DateTimeZone('Africa/Cairo')))) {
+        throw new DomainException('Assign a surgeon and confirm a future appointment before requesting payment.');
     }
 
     $approvedPayment = $pdo->prepare("SELECT id FROM payments WHERE request_id = :request_id AND status = 'approved' LIMIT 1 FOR UPDATE");
@@ -48,6 +54,12 @@ try {
     $checkout->execute([':request_id' => $requestId]);
     if ($approvedPayment->fetchColumn() || $checkout->fetchColumn()) {
         throw new DomainException('The final price is locked because payment activity already exists.');
+    }
+    if ($isRevision) {
+        $pdo->prepare("UPDATE requests SET status='pending_review' WHERE id=?")->execute([$requestId]);
+        $pdo->prepare('UPDATE surgeon_requests SET price_confirmed_at=NULL,price_confirmed_by=NULL WHERE request_id=?')->execute([$requestId]);
+        logSurgeonOperation($pdo,(int)$requestId,(int)$_SESSION['user_id'],'coordination_reopened','pending_payment','pending_review','Details reopened before any payment session was created.');
+        $pdo->commit(); echo json_encode(['success'=>'Returned to review and coordination.']); exit;
     }
 
     if ((int) $request['requires_quote'] === 1) {

@@ -63,9 +63,9 @@ $requestsTable = adminTableState($recent_requests, ['id', 'clinic_name', 'servic
                                 <?= getServiceType($req['service_type']) ?>
                             </div>
                         </td>
-                        <td class="px-6 py-4" id="status-cell-<?= $req['id'] ?>"><?= getStatusBadge($req['status']) ?></td>
+                        <td class="px-6 py-4" id="status-cell-<?= $req['id'] ?>"><?= getStatusBadge($req['status'], $req['service_type']) ?></td>
                         <td class="px-6 py-4 text-right flex justify-end gap-2">
-                            <?php if ($req['service_type'] !== 'surgical_guide'): ?>
+                            <?php if (!in_array($req['service_type'], ['surgical_guide','surgeon_request'], true)): ?>
                                 <select onchange="updateStatus(<?= $req['id'] ?>, this.value)" class="text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:ring-[#1d5f8c] bg-slate-50 hover:bg-white cursor-pointer transition">
                                     <option value="" disabled selected>Change Status</option>
                                     <option value="pending_review" <?= $req['status'] == 'pending_review' ? 'selected' : '' ?>>Pending Review</option>
@@ -76,9 +76,9 @@ $requestsTable = adminTableState($recent_requests, ['id', 'clinic_name', 'servic
                                 </select>
                             <?php endif; ?>
                             <a href="admin_view_request.php?id=<?= $req['id'] ?>" class="inline-flex items-center justify-center rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition hover:bg-[#13324a] hover:text-white">View</a>
-                            <button onclick="deleteRequest(<?= $req['id'] ?>)" class="inline-flex items-center justify-center rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-500 hover:text-white" title="Delete Request">
+                            <?php if ($req['service_type'] !== 'surgeon_request'): ?><button onclick="deleteRequest(<?= $req['id'] ?>)" class="inline-flex items-center justify-center rounded-lg bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition hover:bg-red-500 hover:text-white" title="Delete Request">
         <i class="fa-solid fa-trash"></i>
-    </button>
+    </button><?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

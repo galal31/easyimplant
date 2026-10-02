@@ -8,6 +8,7 @@ require_once '../includes/r2_config.php';
 require_once '../includes/request_file_metadata.php';
 require_once '../includes/request_review.php';
 require_once '../includes/request_workflow.php';
+require_once '../includes/surgeon_operations.php';
 
 use Aws\Exception\AwsException;
 
@@ -111,7 +112,8 @@ try {
         }
     }
 
-    $stmt_surgeons = $pdo->query("SELECT id, full_name FROM users WHERE role = 'surgeon' AND status = 'approved'");
+    if ($request['service_type']==='surgeon_request') $requestMessages=fetchRequestMessages($pdo,(int)$request_id);
+    $stmt_surgeons = $pdo->query("SELECT id, full_name, specialty FROM surgeons WHERE is_available = 1 ORDER BY full_name");
     $surgeons = $stmt_surgeons->fetchAll();
 
     $stmt_logs = $pdo->prepare("SELECT l.*, u.full_name AS actor_name
@@ -127,7 +129,12 @@ try {
     die("Database error occurred.");
 }
 
-function getStatusBadge($status) {
+function getStatusBadge($status, $serviceType = null) {
+    if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
+    if ($serviceType === 'surgeon_request') {
+        $label = ['pending_review'=>'Review & coordination','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed'][$status] ?? null;
+        if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
+    }
     $badges = [
         'pending_review' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
         'awaiting_clinic_approval' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Clinic Approval</span>',
@@ -142,7 +149,7 @@ function getStatusBadge($status) {
 function formatLabel($key) { return ucwords(str_replace('_', ' ', $key)); }
 
 $isSurgicalGuide = $request['service_type'] === 'surgical_guide';
-$isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['status']);
+$isChatWritable  = requestChatIsWritable($request);
 ?>
 <!DOCTYPE html>
 <html lang="en" dir="ltr">
@@ -189,6 +196,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
             }
         }
         .chat-column { display: none; }
+        .surgeon-workspace .chat-column { align-self: stretch; }
         @media (min-width: 1024px) { .chat-column { display: block; } }
 
         /* ── Mobile FAB ── */
@@ -316,7 +324,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                     <i class="fa-solid fa-arrow-left text-sm"></i>
                 </a>
                 <span class="font-bold text-white text-lg">Request Details</span>
-                <div class="ml-auto"><?= getStatusBadge($request['status']) ?></div>
+                <div class="ml-auto"><?= getStatusBadge($request['status'], $request['service_type']) ?></div>
             </div>
         </div>
     </nav>
@@ -379,7 +387,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                 <?php else: ?>
                     <?php if ($request['status'] === 'pending_review'): ?><p class="text-xs text-slate-600">Review the request and approve its final price.</p>
                     <?php elseif ($request['status'] === 'pending_payment'): ?><p class="text-xs text-orange-600">Waiting for the clinic to complete payment.</p>
-                    <?php elseif ($request['status'] === 'in_progress'): ?><p class="text-xs text-blue-700">Paid and in progress.</p>
+                    <?php elseif ($request['status'] === 'in_progress'): ?><p class="text-xs text-blue-700">Paid — awaiting operation.</p>
                     <?php else: ?><p class="text-xs text-slate-600">This request is locked.</p><?php endif; ?>
                 <?php endif; ?>
             </div>
@@ -410,7 +418,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
         ?>
         <section class="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Surgeon request workflow">
             <div class="grid grid-cols-4 gap-1 text-center">
-                <?php foreach (['Admin review', 'Payment', 'In progress', 'Complete'] as $index => $step_label): ?>
+                <?php foreach (['Review & coordination', 'Payment', 'Awaiting operation', 'Operation performed'] as $index => $step_label): ?>
                     <div><div class="h-2 rounded-full <?= $request['status'] !== 'rejected' && $index <= $surgeon_step ? 'bg-[#1d5f8c]' : 'bg-slate-200' ?>"></div><span class="mt-1.5 block text-[10px] font-bold <?= $request['status'] !== 'rejected' && $index <= $surgeon_step ? 'text-[#1d5f8c]' : 'text-slate-400' ?>"><?= $step_label ?></span></div>
                 <?php endforeach; ?>
             </div>
@@ -418,7 +426,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
         <?php endif; ?>
 
         <!-- ══ Two-column workspace grid ══ -->
-        <div class="workspace-grid">
+        <div class="workspace-grid <?= $isSurgicalGuide ? '' : 'surgeon-workspace' ?>">
 
             <!-- ── Main content column ── -->
             <div class="space-y-5">
@@ -435,6 +443,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <?php require __DIR__ . '/../includes/surgeon_request_details.php'; ?>
                             </div>
                         </div>
+                        <?php require __DIR__ . '/../includes/surgeon_operation_panel.php'; ?>
                         <!-- Protected surgeon request workflow -->
                         <div class="case-card">
                             <div class="case-card-header">
@@ -451,12 +460,15 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                         <?php else: ?>
                                             <div class="rounded-xl border border-blue-100 bg-blue-50 p-4"><p class="text-xs font-bold uppercase text-blue-600">Stored calculated price</p><p class="mt-1 text-2xl font-extrabold text-[#13324a]"><?= formatMoney($details['total_price'] ?? $details['estimated_total']) ?></p></div>
                                         <?php endif; ?>
-                                        <button type="submit" class="w-full rounded-xl bg-[#13324a] py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5f8c]">Request Payment</button>
+                                        <button type="submit" <?= surgeonOperationIsReady($details)?'':'disabled' ?> class="w-full rounded-xl bg-[#13324a] py-2.5 text-sm font-bold text-white transition hover:bg-[#1d5f8c] disabled:opacity-40">Approve details & request payment</button>
                                     </form>
                                 <?php elseif ($request['status'] === 'pending_payment'): ?>
-                                    <div class="rounded-xl border border-orange-100 bg-orange-50 p-4"><p class="text-sm font-bold text-orange-800">Waiting for payment</p><p class="mt-1 text-xl font-extrabold text-[#13324a]"><?= formatMoney($details['total_price']) ?></p><p class="mt-1 text-xs text-orange-700">The request can enter production only after payment is completed.</p></div>
+                                    <div class="rounded-xl border border-orange-100 bg-orange-50 p-4"><p class="text-sm font-bold text-orange-800">Waiting for payment</p><p class="mt-1 text-xl font-extrabold text-[#13324a]"><?= formatMoney($details['total_price']) ?></p><p class="mt-1 text-xs text-orange-700">Full payment confirms the operation booking.</p></div>
+                                    <button type="button" id="reviseSurgeonDetails" class="mt-3 w-full rounded-xl border border-slate-300 py-2.5 text-sm font-bold">Return to coordination before payment</button><p class="mt-2 text-xs text-slate-500">Details can be reopened only before any payment session exists.</p>
                                 <?php elseif ($request['status'] === 'in_progress'): ?>
-                                    <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, 'completed')" class="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700">Mark Completed</button>
+                                    <label for="performedOperationAt" class="mb-2 block text-sm font-bold">Actual operation date and time (Cairo)</label><input id="performedOperationAt" type="datetime-local" required class="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2.5">
+                                    <label for="operationCompletionNote" class="mb-2 block text-sm font-bold">Completion note</label><textarea id="operationCompletionNote" maxlength="4000" rows="3" required class="mb-3 w-full rounded-xl border border-slate-300 px-3 py-2.5"></textarea>
+                                    <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, 'completed')" <?= surgeonOperationIsReady($details)?'':'disabled' ?> class="w-full rounded-xl bg-emerald-600 py-2.5 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-40">Record operation & complete</button>
                                 <?php else: ?>
                                     <p class="text-sm font-semibold text-slate-500">No further workflow actions are available.</p>
                                 <?php endif; ?>
@@ -464,7 +476,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
                                 <?php if (in_array($request['status'], ['pending_review', 'pending_payment', 'in_progress'], true)): ?>
                                     <div class="mt-4 border-t border-slate-100 pt-4">
                                         <textarea id="surgeonRejectionReason" rows="3" class="mb-3 w-full rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-sm focus:border-red-400 focus:ring-red-400" placeholder="Rejection reason (required)"></textarea>
-                                        <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, 'rejected')" class="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-500 hover:text-white">Reject Request</button>
+                                        <button onclick="updateSurgeonStatus(<?= (int) $request['id'] ?>, '<?= $request['status']==='in_progress'?'cancelled':'rejected' ?>')" class="w-full rounded-xl border border-red-200 bg-red-50 py-2.5 text-sm font-bold text-red-600 transition hover:bg-red-500 hover:text-white"><?= $request['status']==='in_progress'?'Cancel — financial review required':'Reject request before payment' ?></button>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -947,7 +959,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
             </div><!-- end main column -->
 
             <!-- ── Chat column (desktop sticky) ── -->
-            <?php if ($isSurgicalGuide): ?>
+            <?php if (in_array($request['service_type'], ['surgical_guide','surgeon_request'], true)): ?>
             <div class="chat-column">
                 <div id="chatColumnWrapper">
                     <?php include __DIR__ . '/../includes/request_chat_panel.php'; ?>
@@ -958,7 +970,7 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
         </div><!-- end workspace-grid -->
     </div><!-- end page container -->
 
-    <?php if ($isSurgicalGuide): ?>
+    <?php if (in_array($request['service_type'], ['surgical_guide','surgeon_request'], true)): ?>
     <!-- ══ Mobile Chat: FAB + Bubble + Drawer ══ -->
     <button
         id="chatFabButton"
@@ -1257,6 +1269,22 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
     });
 
     /* ════ Status / Reject functions ════ */
+    document.getElementById('reviseSurgeonDetails')?.addEventListener('click', async function() {
+        if (!confirm('Return to coordination to revise the operation details?')) return;
+        this.disabled=true;
+        try { const body=new URLSearchParams({request_id:<?= (int)$request['id'] ?>,action:'revise',csrf_token:requestWorkflowCsrfToken}); const response=await fetch('../api/prepare_surgeon_payment.php',{method:'POST',body}); const data=await response.json(); if(!response.ok) throw new Error(data.error); location.reload(); }
+        catch(error) { alert(error.message || 'Could not reopen coordination.'); } finally { this.disabled=false; }
+    });
+    document.getElementById('surgeonAppointmentForm')?.addEventListener('submit', async function(event) {
+        event.preventDefault();
+        const button=this.querySelector('button'); button.disabled=true;
+        try {
+            const body=new URLSearchParams(new FormData(this)); body.set('request_id',<?= (int)$request['id'] ?>); body.set('csrf_token',requestWorkflowCsrfToken);
+            const response=await fetch('../api/assign_surgeon.php',{method:'POST',body}); const data=await response.json();
+            if (!response.ok) throw new Error(data.error || 'Could not save appointment.');
+            location.reload();
+        } catch(error) { alert(error.message || 'Network error.'); } finally { button.disabled=false; }
+    });
     document.getElementById('prepareSurgeonPaymentForm')?.addEventListener('submit', async function(event) {
         event.preventDefault();
         if (!confirm('Approve this final price and request payment?')) return;
@@ -1271,11 +1299,14 @@ $isChatWritable  = $isSurgicalGuide && surgicalGuideChatIsWritable($request['sta
     });
 
     async function updateSurgeonStatus(requestId, newStatus) {
-        const reason = newStatus === 'rejected' ? (document.getElementById('surgeonRejectionReason')?.value.trim() || '') : '';
-        if (newStatus === 'rejected' && !reason) { alert('Rejection reason is required.'); return; }
-        if (!confirm(newStatus === 'completed' ? 'Mark this request as completed?' : 'Reject this request?')) return;
+        const reason = ['rejected','cancelled'].includes(newStatus) ? (document.getElementById('surgeonRejectionReason')?.value.trim() || '') : '';
+        if (['rejected','cancelled'].includes(newStatus) && !reason) { alert('A reason is required.'); return; }
+        const performed_at=document.getElementById('performedOperationAt')?.value || '';
+        const completion_note=document.getElementById('operationCompletionNote')?.value.trim() || '';
+        if (newStatus==='completed' && (!performed_at || !completion_note)) { alert('Enter the actual operation date and a completion note.'); return; }
+        if (!confirm(newStatus === 'completed' ? 'Record the performed operation and complete this request?' : (newStatus==='cancelled'?'Cancel after payment? A financial review will be required; no automatic refund will be made.':'Reject this request?'))) return;
         try {
-            const body = new URLSearchParams({request_id: requestId, status: newStatus, reason, csrf_token: requestWorkflowCsrfToken});
+            const body = new URLSearchParams({request_id: requestId, status: newStatus, reason, performed_at, completion_note, csrf_token: requestWorkflowCsrfToken});
             const response = await fetch('../api/update_request_status.php', {method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: body.toString()});
             const data = await response.json();
             if (response.ok) { alert(data.success || 'Request updated.'); location.reload(); }

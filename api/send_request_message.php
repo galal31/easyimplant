@@ -38,14 +38,14 @@ if (!requestWorkflowCsrfIsValid(trim((string) ($data['csrf_token'] ?? '')))) {
 
 try {
     $pdo->beginTransaction();
-    $request = requireSurgicalGuideConversationAccess(
+    $request = requireRequestConversationAccess(
         $pdo,
         (int) $requestId,
         (int) $_SESSION['user_id'],
         $role,
         true
     );
-    if (!surgicalGuideChatIsWritable($request['status'])) {
+    if (!requestChatIsWritable($request)) {
         throw new DomainException('This conversation is read-only because the request is completed or rejected.');
     }
 

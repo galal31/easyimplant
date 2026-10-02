@@ -2,6 +2,7 @@
 
 require_once '../includes/db_connect.php';
 require_once '../includes/xpay.php';
+require_once '../includes/surgeon_operations.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
@@ -55,6 +56,11 @@ try {
     }
     if ($request['status'] !== 'pending_payment') {
         throw new DomainException('This request is no longer waiting for payment.');
+    }
+    if ($request['service_type'] === 'surgeon_request') {
+        $operationStmt=$pdo->prepare('SELECT * FROM surgeon_requests WHERE request_id=? FOR UPDATE');
+        $operationStmt->execute([$requestId]);
+        requireSurgeonOperationAgreement($operationStmt->fetch() ?: [],(string)($_POST['operation_fingerprint'] ?? ''));
     }
 
     $amountMinor = xpayDecimalToMinor((string) $request['total_price']);
@@ -173,7 +179,8 @@ try {
         $pdo->rollBack();
     }
     error_log('Checkout not payable for request ' . (int) $requestId . ': ' . $e->getMessage());
-    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=not_payable', true, 303);
+    $errorCode=$e instanceof SurgeonOperationAgreementChanged ? 'operation_changed' : 'not_payable';
+    header('Location: ' . $fallbackUrl . $fallbackSeparator . 'payment_error=' . $errorCode, true, 303);
     exit;
 } catch (Throwable $e) {
     if ($pdo->inTransaction()) {

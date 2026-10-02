@@ -9,7 +9,7 @@ function paymentReturnStatus(PDO $pdo, string $token, string $returnState = ''):
         'request_url'=>'clinic_dashboard.php', 'request_status'=>null];
     if (!preg_match('/^[a-f0-9]{64}$/D', $token)) return $result;
     $stmt = $pdo->prepare("SELECT c.request_id,c.status,c.payment_status,c.amount_minor,c.currency,
-        r.status AS request_status,
+        r.status AS request_status,r.service_type,
         (c.expires_at IS NOT NULL AND c.expires_at <= UTC_TIMESTAMP()) AS is_expired,
         EXISTS(SELECT 1 FROM payments p WHERE p.request_id=c.request_id AND p.user_id=c.user_id
             AND p.status='approved' AND p.payment_source='xpay' AND p.provider_session_id=c.xpay_session_id
@@ -30,7 +30,8 @@ function paymentReturnStatus(PDO $pdo, string $token, string $returnState = ''):
         $result['state'] = 'paid';
         $result['title'] = 'Payment confirmed';
         $result['message'] = match ($checkout['request_status']) {
-            'in_progress'=>'Payment completed. Your request is in progress.',
+            'in_progress'=>$checkout['service_type']==='surgeon_request' ? 'Payment completed. Your operation booking is confirmed; awaiting the operation.' : 'Payment completed. Your request is in progress.',
+            'cancelled'=>'Payment was confirmed, but the operation was cancelled. Financial review is required; no automatic refund has been made.',
             'completed'=>'Payment completed. Your request is completed.',
             default=>'Payment completed. Return to the request to review its current status.',
         };

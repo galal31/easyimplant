@@ -471,6 +471,9 @@ function xpayProcessWebhookEvent(PDO $pdo, array $event): array
                     ':note' => 'Online payment completed.',
                 ]);
         } elseif (!in_array($request['status'], ['in_progress', 'completed'], true)) {
+            if ($request['service_type']==='surgeon_request') {
+                $pdo->prepare('UPDATE surgeon_requests SET financial_review_required=1 WHERE request_id=?')->execute([$storedSession['request_id']]);
+            }
             $pdo->prepare("INSERT INTO request_activity_logs
                 (request_id, actor_id, actor_role, action, old_value, new_value, note)
                 VALUES (:request_id, NULL, 'system', 'online_payment_requires_review', :old_status, :new_status, :note)")

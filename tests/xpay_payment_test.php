@@ -288,6 +288,7 @@ try {
     $eventIds[] = $lateEventId;
     assertXpayTest(xpayProcessWebhookEvent($pdo, paidXpayEvent($lateEventId, $lateSessionId, $lateRequestId, $clinicId, 50000, 'surgeon_request'))['status'] === 'paid', 'A valid late payment must still be recorded.');
     assertXpayTest($pdo->query("SELECT status FROM requests WHERE id = $lateRequestId")->fetchColumn() === 'rejected', 'A late payment must not reopen a rejected request.');
+    assertXpayTest((int)$pdo->query("SELECT financial_review_required FROM surgeon_requests WHERE request_id = $lateRequestId")->fetchColumn() === 1, 'A late surgeon payment must flag financial review without refunding or reopening.');
     assertXpayTest((int) $pdo->query("SELECT COUNT(*) FROM request_activity_logs WHERE request_id = $lateRequestId AND action = 'online_payment_requires_review'")->fetchColumn() === 1, 'A late payment must create a neutral review activity.');
 
     $awaitingBefore = getClinicAwaitingPaymentAmount($pdo, $clinicId);

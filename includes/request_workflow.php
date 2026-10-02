@@ -43,7 +43,7 @@ function surgeonRequestTransitionIsAllowed(string $currentStatus, string $newSta
         'admin' => [
             'pending_review' => ['rejected'],
             'pending_payment' => ['rejected'],
-            'in_progress' => ['completed', 'rejected'],
+            'in_progress' => ['completed', 'cancelled'],
         ],
         'price_confirmation' => [
             'pending_review' => ['pending_payment'],

@@ -66,7 +66,7 @@ $surgeonGuidanceEsc = static fn($value) => htmlspecialchars((string) $value, ENT
             <ol class="mt-4 grid gap-3 sm:grid-cols-2">
                 <?php $surgeonStepNumber = 0; foreach ($surgeonJourney as $stage => [$title, $explanation]): $surgeonStepNumber++; $isCurrentStage = $request['status'] === $stage; ?>
                     <li class="rounded-xl border p-3 <?= $isCurrentStage ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50' ?>" <?= $isCurrentStage ? 'aria-current="step"' : '' ?>>
-                        <p class="text-sm font-bold text-[#13324a]"><?= $surgeonStepNumber ?>. <?= $surgeonGuidanceEsc($title) ?><?= $isCurrentStage ? ' · Current step' : '' ?></p>
+                        <p class="text-sm font-bold text-[#13324a]"><?= $surgeonStepNumber ?>. <span><?= $surgeonGuidanceEsc($title) ?></span><?php if ($isCurrentStage): ?> · <span>Current step</span><?php endif; ?></p>
                         <p class="mt-1 text-xs leading-5 text-slate-600"><?= $surgeonGuidanceEsc($explanation) ?></p>
                     </li>
                 <?php endforeach; ?>

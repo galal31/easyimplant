@@ -2,9 +2,10 @@
 define('EASYIMPLANT_SKIP_SESSION', true);
 require_once __DIR__ . '/includes/db_connect.php';
 require_once __DIR__ . '/includes/case_videos.php';
+require_once __DIR__ . '/includes/user_language.php';
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr" class="scroll-smooth">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" class="scroll-smooth" data-i18n-title="home_title">
 
 <head>
     <meta charset="UTF-8" />
@@ -357,6 +358,7 @@ require_once __DIR__ . '/includes/case_videos.php';
     <?php include 'includes/footer.php'; ?>
 
     <script src="js/translations.js"></script>
+    <script src="js/user-page-translations.js"></script>
     <script src="js/case-videos.js"></script>
     <script src="js/main.js"></script>
 </body>

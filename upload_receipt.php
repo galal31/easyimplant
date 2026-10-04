@@ -1,6 +1,7 @@
 <?php
 
 require_once 'includes/db_connect.php';
+require_once 'includes/user_language.php';
 
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'clinic') {
     header('Location: login.php');
@@ -10,7 +11,7 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'clinic') {
 $requestId = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 if (!$requestId) {
     http_response_code(400);
-    exit('Invalid request ID.');
+    exit(userLocalized('Invalid request ID.', 'رقم الطلب غير صحيح.'));
 }
 
 $stmt = $pdo->prepare("SELECT id FROM requests
@@ -19,8 +20,8 @@ $stmt = $pdo->prepare("SELECT id FROM requests
 $stmt->execute([':id' => $requestId, ':user_id' => $_SESSION['user_id']]);
 if (!$stmt->fetchColumn()) {
     http_response_code(404);
-    exit('Request not found.');
+    exit(userLocalized('Request not found.', 'الطلب غير موجود.'));
 }
 
 http_response_code(409);
-exit('New manual payment receipts are disabled. Return to the request page to complete payment online.');
+exit(userLocalized('New manual payment receipts are disabled. Return to the request page to complete payment online.', 'تم إيقاف رفع إيصالات الدفع اليدوي الجديدة. ارجع إلى صفحة الطلب لإتمام الدفع الإلكتروني.'));

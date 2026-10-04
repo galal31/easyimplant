@@ -10,6 +10,7 @@ require_once 'includes/request_workflow.php';
 require_once 'includes/surgeon_operations.php';
 require_once 'includes/request_review.php';
 require_once 'includes/xpay.php';
+require_once 'includes/user_language.php';
 
 use Aws\Exception\AwsException;
 
@@ -33,7 +34,7 @@ $hasPaymentError = !empty($_GET['payment_error']) || !empty($_GET['xpay_error'])
 $request_id = filter_input(INPUT_GET, 'id', FILTER_VALIDATE_INT);
 
 if (!$request_id) {
-    die("Invalid request ID.");
+    die(userLocalized('Invalid request ID.', 'رقم الطلب غير صحيح.'));
 }
 
 // دالة لتوليد رابط تحميل مؤقت صالح لمدة ساعة (60 دقيقة)
@@ -64,7 +65,7 @@ try {
     $request = $stmt->fetch();
 
     if (!$request) {
-        die("Request not found or you do not have permission to view it.");
+        die(userLocalized('Request not found or you do not have permission to view it.', 'الطلب غير موجود أو لا تملك صلاحية عرضه.'));
     }
 
     // Fetch specific details based on type
@@ -112,24 +113,24 @@ try {
 
 } catch (\PDOException $e) {
     error_log("View Request DB Error: " . $e->getMessage());
-    die("Database error occurred.");
+    die(userLocalized('Database error occurred.', 'حدث خطأ في قاعدة البيانات.'));
 }
 
 function getStatusBadge($status, $serviceType = null) {
-    if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
+    if ($status === 'cancelled') return '<span data-i18n="status_cancelled_financial" class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
     if ($serviceType === 'surgeon_request') {
-        $label = ['pending_review'=>'Review & coordination','pending_payment'=>'Awaiting your payment','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed','contacted'=>'Previous coordination status'][$status] ?? null;
-        if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
+        $statusMeta = ['pending_review'=>['Review & coordination','status_review_coordination'],'pending_payment'=>['Awaiting your payment','status_pending_payment'],'in_progress'=>['Paid — awaiting operation','status_paid_waiting_operation'],'completed'=>['Operation performed','status_operation_performed'],'contacted'=>['Previous coordination status','status_previous_coordination']][$status] ?? null;
+        if ($statusMeta) return '<span data-i18n="'.$statusMeta[1].'" class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$statusMeta[0].'</span>';
     }
     $badges = [
-        'pending_review' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
-        'awaiting_clinic_approval' => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Your Approval</span>',
-        'rejected'       => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-red-50 text-red-600 border border-red-200">Rejected</span>',
-        'pending_payment'=> '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-orange-50 text-orange-600 border border-orange-200">Pending Payment</span>',
-        'in_progress'    => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">In Progress</span>',
-        'completed'      => '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Completed</span>'
+        'pending_review' => '<span data-i18n="status_pending_review" class="px-3 py-1 text-sm font-semibold rounded-full bg-amber-50 text-amber-600 border border-amber-200">Pending Review</span>',
+        'awaiting_clinic_approval' => '<span data-i18n="status_awaiting_approval" class="px-3 py-1 text-sm font-semibold rounded-full bg-cyan-50 text-cyan-700 border border-cyan-200">Awaiting Your Approval</span>',
+        'rejected'       => '<span data-i18n="status_rejected" class="px-3 py-1 text-sm font-semibold rounded-full bg-red-50 text-red-600 border border-red-200">Rejected</span>',
+        'pending_payment'=> '<span data-i18n="status_pending_payment" class="px-3 py-1 text-sm font-semibold rounded-full bg-orange-50 text-orange-600 border border-orange-200">Pending Payment</span>',
+        'in_progress'    => '<span data-i18n="status_in_progress" class="px-3 py-1 text-sm font-semibold rounded-full bg-indigo-50 text-indigo-600 border border-indigo-200">In Progress</span>',
+        'completed'      => '<span data-i18n="status_completed" class="px-3 py-1 text-sm font-semibold rounded-full bg-emerald-50 text-emerald-600 border border-emerald-200">Completed</span>'
     ];
-    return $badges[$status] ?? '<span class="px-3 py-1 text-sm font-semibold rounded-full bg-slate-100 text-slate-600">Unknown</span>';
+    return $badges[$status] ?? '<span data-i18n="status_unknown" class="px-3 py-1 text-sm font-semibold rounded-full bg-slate-100 text-slate-600">Unknown</span>';
 }
 
 function formatLabel($key) {
@@ -153,7 +154,7 @@ $isSurgicalGuide = $request['service_type'] === 'surgical_guide';
 $isChatWritable  = requestChatIsWritable($request);
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" data-i18n-title="request_details_title">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -161,6 +162,7 @@ $isChatWritable  = requestChatIsWritable($request);
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/user-i18n.css">
     <style>
         body { font-family: 'Outfit', 'Cairo', sans-serif; background: #f4f8fb; }
 
@@ -343,6 +345,8 @@ $isChatWritable  = requestChatIsWritable($request);
         .filename-cell { min-width: 0; overflow: hidden; }
         .filename-cell span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         video, img { max-width: 100%; }
+        [dir="rtl"] #chatFabButton, [dir="rtl"] #chatAttentionBubble { right: auto; left: 1.25rem; }
+        [dir="rtl"] #chatAttentionBubble { border-radius: 1rem 1rem 1rem 0.25rem; }
     </style>
 </head>
 <body class="bg-[#f4f8fb] text-slate-800 antialiased">
@@ -358,15 +362,16 @@ $isChatWritable  = requestChatIsWritable($request);
                     <span class="font-bold text-[#13324a] text-lg">Easy Implant</span>
                 </div>
                 <div class="flex items-center gap-4">
-                    <div class="hidden sm:block text-right">
+                    <?php $userLanguageSwitcherCompact = true; require __DIR__ . '/includes/user_language_switcher.php'; ?>
+                    <div class="hidden sm:block text-end" dir="auto">
                         <p class="text-sm font-bold text-[#13324a] leading-tight"><?= htmlspecialchars($full_name) ?></p>
                         <p class="text-xs font-medium text-slate-500"><?= htmlspecialchars($clinic_name) ?></p>
                     </div>
                     <a href="clinic_dashboard.php" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-[#13324a]">
-                        Dashboard
+                        <span data-i18n="dashboard_heading">Dashboard</span>
                     </a>
                     <a href="logout.php" class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-50 hover:border-red-100">
-                        <i class="fa-solid fa-arrow-right-from-bracket mr-2"></i> Logout
+                        <i class="fa-solid fa-arrow-right-from-bracket me-2"></i> <span data-i18n="logout">Logout</span>
                     </a>
                 </div>
             </div>
@@ -379,11 +384,11 @@ $isChatWritable  = requestChatIsWritable($request);
         <!-- ── Request header ── -->
         <div class="flex flex-wrap items-center gap-4 mb-4">
             <a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-[#13324a] hover:bg-slate-50 transition shadow-sm" aria-label="Back to dashboard">
-                <i class="fa-solid fa-arrow-left"></i>
+                <i class="fa-solid fa-arrow-left rtl-flip"></i>
             </a>
             <div class="flex-1 min-w-0">
-                <h1 class="text-2xl font-bold text-[#13324a]">Request #<?= str_pad($request['id'], 5, '0', STR_PAD_LEFT) ?></h1>
-                <p class="text-sm text-slate-500 mt-0.5">Submitted on <?= date('F j, Y', strtotime($request['created_at'])) ?> · <?= $isSurgicalGuide ? 'Surgical Guide' : 'Surgeon Request' ?></p>
+                <h1 class="text-2xl font-bold text-[#13324a]"><span data-i18n="request_id">Request</span> #<?= str_pad($request['id'], 5, '0', STR_PAD_LEFT) ?></h1>
+                <p class="text-sm text-slate-500 mt-0.5"><span data-i18n="submitted_on">Submitted on</span> <time datetime="<?= htmlspecialchars(date('c', strtotime($request['created_at']))) ?>" data-localized-date><?= htmlspecialchars(date('F j, Y', strtotime($request['created_at']))) ?></time> · <span data-i18n="<?= $isSurgicalGuide ? 'surgical_guide' : 'surgeon_request' ?>"><?= $isSurgicalGuide ? 'Surgical Guide' : 'Surgeon Request' ?></span></p>
             </div>
             <div class="shrink-0 <?= $request['service_type'] === 'surgeon_request' ? 'flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end' : '' ?>"><?php if ($request['service_type'] === 'surgeon_request'): ?><p class="text-xs font-bold text-slate-500">Request status:</p><?php endif; ?><?= getStatusBadge($request['status'], $request['service_type']) ?></div>
         </div>
@@ -441,7 +446,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                         <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-teal-600 text-lg"><i class="fa-solid fa-user-md"></i></div>
                                         <div>
                                             <h3 class="text-sm font-bold text-[#13324a]">Assigned Surgeon</h3>
-                                            <p class="text-sm text-slate-600 mt-1">Dr. <?= htmlspecialchars($details['surgeon_name']) ?> has been assigned to this case.</p>
+                                            <p class="text-sm text-slate-600 mt-1"><span>Dr.</span> <span dir="auto"><?= htmlspecialchars($details['surgeon_name']) ?></span> <span>has been assigned to this case.</span></p>
                                         </div>
                                     </div>
                                 <?php endif; ?>
@@ -493,11 +498,11 @@ $isChatWritable  = requestChatIsWritable($request);
                                 <div class="info-grid">
                                     <div class="info-item">
                                         <div class="info-label">Operation Date</div>
-                                        <div class="info-value"><?= date('F j, Y', strtotime($details['operation_date'] ?? 'now')) ?></div>
+                                        <time class="info-value block" datetime="<?= htmlspecialchars(date('c', strtotime($details['operation_date'] ?? 'now'))) ?>" data-localized-date><?= date('F j, Y', strtotime($details['operation_date'] ?? 'now')) ?></time>
                                     </div>
                                     <div class="info-item">
                                         <div class="info-label">Implant Type</div>
-                                        <div class="info-value"><?= htmlspecialchars($details['implant_type'] ?: 'Not specified') ?></div>
+                                        <div class="info-value" dir="auto"><?= htmlspecialchars($details['implant_type'] ?: 'Not specified') ?></div>
                                     </div>
                                     <div class="info-item" style="grid-column: 1 / -1;">
                                         <div class="info-label">Delivery Method</div>
@@ -520,7 +525,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                             <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm text-slate-400 shrink-0"><i class="fa-solid fa-x-ray text-lg"></i></div>
                                             <div class="filename-cell flex-1">
                                                 <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($cbctName) ?>"><?= htmlspecialchars($cbctName) ?></span>
-                                                <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($details['cbct_content_type'] ?? null, $cbctName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($details['cbct_file_size'] ?? null)) ?></span>
+                                                <span class="text-xs text-slate-400"><span><?= htmlspecialchars(uploadedFileTypeLabel($details['cbct_content_type'] ?? null, $cbctName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($details['cbct_file_size'] ?? null)) ?></span></span>
                                             </div>
                                             <a href="<?= htmlspecialchars($cbctUrl) ?>" target="_blank" class="shrink-0 text-xs font-bold text-[#1d5f8c] hover:underline">Download / View <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></a>
                                         </div>
@@ -539,7 +544,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                             <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-white shadow-sm text-slate-400 shrink-0"><i class="fa-solid fa-tooth text-lg"></i></div>
                                             <div class="filename-cell flex-1">
                                                 <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($stlName) ?>"><?= htmlspecialchars($stlName) ?></span>
-                                                <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($details['stl_content_type'] ?? null, $stlName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($details['stl_file_size'] ?? null)) ?></span>
+                                                <span class="text-xs text-slate-400"><span><?= htmlspecialchars(uploadedFileTypeLabel($details['stl_content_type'] ?? null, $stlName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($details['stl_file_size'] ?? null)) ?></span></span>
                                             </div>
                                             <a href="<?= htmlspecialchars($stlUrl) ?>" target="_blank" class="shrink-0 text-xs font-bold text-[#1d5f8c] hover:underline">Download / View <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></a>
                                         </div>
@@ -579,7 +584,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                                     <?php foreach ($guideKitFiles as $file): ?>
                                                         <?php $kitFileName = uploadedFileDisplayName($file['original_name'] ?? null, $file['file_path']); ?>
                                                         <a href="<?= htmlspecialchars(getPresignedUrl($s3Client, $bucketName, $file['file_path'])) ?>" target="_blank" class="flex items-center justify-between gap-3 rounded-xl border border-blue-100 bg-white p-3 text-[#13324a] transition hover:border-[#1d5f8c]">
-                                                            <span class="filename-cell min-w-0"><span class="text-sm font-semibold" title="<?= htmlspecialchars($kitFileName) ?>"><i class="fa-regular fa-image mr-2 text-[#1d5f8c]"></i><?= htmlspecialchars($kitFileName) ?></span><span class="text-xs font-normal text-slate-400 mt-0.5"><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'] ?? null, $kitFileName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'] ?? null)) ?></span></span>
+                                                            <span class="filename-cell min-w-0"><span class="text-sm font-semibold" title="<?= htmlspecialchars($kitFileName) ?>"><i class="fa-regular fa-image me-2 text-[#1d5f8c]"></i><?= htmlspecialchars($kitFileName) ?></span><span class="text-xs font-normal text-slate-400 mt-0.5"><span><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'] ?? null, $kitFileName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'] ?? null)) ?></span></span></span>
                                                             <span class="shrink-0 text-xs font-bold text-[#1d5f8c]">View photo <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></span>
                                                         </a>
                                                     <?php endforeach; ?>
@@ -597,7 +602,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                 <?php if (!empty($details['notes'])): ?>
                                     <div>
                                         <h3 class="info-label mb-2">Notes</h3>
-                                        <div class="text-sm text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed"><?= htmlspecialchars($details['notes']) ?></div>
+                                        <div class="text-sm text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-100 whitespace-pre-wrap leading-relaxed" dir="auto"><?= htmlspecialchars($details['notes']) ?></div>
                                     </div>
                                 <?php endif; ?>
 
@@ -655,15 +660,15 @@ $isChatWritable  = requestChatIsWritable($request);
                                             <article class="overflow-hidden rounded-2xl border <?= $reviewIndex === 0 ? 'border-cyan-200 shadow-sm' : 'border-slate-200' ?> bg-white">
                                                 <header class="flex flex-col gap-2 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between <?= $reviewIndex === 0 ? 'bg-cyan-50/60' : 'bg-slate-50' ?>">
                                                     <div class="flex flex-wrap items-center gap-2">
-                                                        <h3 class="font-bold text-[#13324a]">Review round #<?= (int) $package['id'] ?></h3>
+                                                        <h3 class="font-bold text-[#13324a]"><span>Review round</span> #<?= (int) $package['id'] ?></h3>
                                                         <?php if ($reviewIndex === 0): ?><span class="rounded-full bg-cyan-100 px-2.5 py-1 text-[11px] font-bold text-cyan-800">Latest review</span><?php endif; ?>
                                                         <?php if (!empty($package['approved_at'])): ?><span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">Approved</span><?php endif; ?>
                                                     </div>
-                                                    <time class="text-xs text-slate-500"><?= date('M d, Y, H:i', strtotime($package['sent_at'])) ?></time>
+                                                    <time class="text-xs text-slate-500" datetime="<?= htmlspecialchars(date('c', strtotime($package['sent_at']))) ?>" data-localized-datetime><?= date('M d, Y, H:i', strtotime($package['sent_at'])) ?></time>
                                                 </header>
                                                 <div class="p-5">
                                                     <?php if (!empty($package['summary'])): ?>
-                                                        <div class="mb-5 whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-7 text-slate-700"><?= htmlspecialchars($package['summary']) ?></div>
+                                                        <div class="mb-5 whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-7 text-slate-700" dir="auto"><?= htmlspecialchars($package['summary']) ?></div>
                                                     <?php else: ?>
                                                         <p class="mb-5 text-sm text-slate-500">This round contains files without an additional written explanation.</p>
                                                     <?php endif; ?>
@@ -686,7 +691,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                                                     <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-cyan-700 shadow-sm"><i class="fa-solid fa-paperclip"></i></span>
                                                                     <span class="filename-cell min-w-0 flex-1">
                                                                         <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($reviewFileName) ?>"><?= htmlspecialchars($reviewFileName) ?></span>
-                                                                        <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'], $reviewFileName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'])) ?></span>
+                                                                        <span class="text-xs text-slate-400"><span><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'], $reviewFileName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'])) ?></span></span>
                                                                     </span>
                                                                     <a href="<?= htmlspecialchars($reviewOpenUrl) ?>" target="_blank" rel="noopener" class="shrink-0 rounded-lg bg-white px-3 py-2 text-xs font-bold text-[#1d5f8c] shadow-sm hover:bg-blue-50">Open</a>
                                                                 </div>
@@ -739,7 +744,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                                             <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-400 group-hover:bg-blue-50 group-hover:text-[#1d5f8c] transition shrink-0"><i class="<?= $meta['icon'] ?> text-lg"></i></div>
                                                             <div class="filename-cell flex-1">
                                                                 <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($deliveryFileName) ?>"><?= htmlspecialchars($deliveryFileName) ?></span>
-                                                                <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'] ?? null, $deliveryFileName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'] ?? null)) ?></span>
+                                                                <span class="text-xs text-slate-400"><span><?= htmlspecialchars(uploadedFileTypeLabel($file['content_type'] ?? null, $deliveryFileName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($file['file_size'] ?? null)) ?></span></span>
                                                             </div>
                                                             <span class="text-xs font-bold text-[#1d5f8c] shrink-0">Download</span>
                                                         </a>
@@ -753,7 +758,7 @@ $isChatWritable  = requestChatIsWritable($request);
                         <?php elseif ($isSurgicalGuide && $request['status'] === 'completed'): ?>
                             <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                                 <p class="font-bold"><i class="fa-solid fa-circle-exclamation mr-2"></i>The delivery package is not available.</p>
-                                <p class="mt-1 text-xs text-amber-700">Please contact the administration and mention request #<?= (int) $request['id'] ?>.</p>
+                                <p class="mt-1 text-xs text-amber-700"><span>Please contact the administration and mention request</span> #<?= (int) $request['id'] ?>.</p>
                             </div>
                         <?php endif; ?>
 
@@ -776,13 +781,13 @@ $isChatWritable  = requestChatIsWritable($request);
                             <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
                                 <div>
                                     <p class="info-label"><?= $request['service_type'] === 'surgeon_request' ? 'Payment status' : 'Status' ?></p>
-                                    <p class="text-sm font-bold <?= $payment['status'] === 'approved' ? 'text-emerald-600' : ($payment['status'] === 'rejected' ? 'text-red-600' : 'text-orange-600') ?>">
+                                    <p data-i18n="payment_status_<?= htmlspecialchars($payment['status'], ENT_QUOTES, 'UTF-8') ?>" class="text-sm font-bold <?= $payment['status'] === 'approved' ? 'text-emerald-600' : ($payment['status'] === 'rejected' ? 'text-red-600' : 'text-orange-600') ?>">
                                         <?= ucfirst(str_replace('_', ' ', $payment['status'])) ?>
                                     </p>
                                 </div>
                                 <div class="text-right">
                                     <p class="info-label"><?= ($payment['payment_source'] ?? 'manual_receipt') === 'xpay' ? 'Confirmed On' : 'Uploaded On' ?></p>
-                                    <p class="text-sm font-semibold text-slate-700"><?= date('M d, Y', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></p>
+                                    <time class="text-sm font-semibold text-slate-700" datetime="<?= htmlspecialchars(date('c', strtotime($payment['approved_at'] ?? $payment['uploaded_at']))) ?>" data-localized-date><?= date('M d, Y', strtotime($payment['approved_at'] ?? $payment['uploaded_at'])) ?></time>
                                 </div>
                             </div>
                             <?php if (($payment['payment_source'] ?? 'manual_receipt') === 'xpay'): ?>
@@ -802,7 +807,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                     <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#1d5f8c] shadow-sm"><i class="fa-solid fa-receipt"></i></span>
                                     <span class="filename-cell min-w-0 flex-1">
                                         <span class="text-sm font-semibold text-slate-700" title="<?= htmlspecialchars($receiptName) ?>"><?= htmlspecialchars($receiptName) ?></span>
-                                        <span class="text-xs text-slate-400"><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?> · <?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span>
+                                        <span class="text-xs text-slate-400"><span><?= htmlspecialchars(uploadedFileTypeLabel($payment['receipt_content_type'] ?? null, $receiptName)) ?></span> · <span><?= htmlspecialchars(uploadedFileSizeLabel($payment['receipt_file_size'] ?? null)) ?></span></span>
                                     </span>
                                     <span class="shrink-0 text-xs font-bold text-[#1d5f8c]">View receipt <i class="fa-solid fa-arrow-up-right-from-square ml-1"></i></span>
                                 </a>
@@ -884,6 +889,9 @@ $isChatWritable  = requestChatIsWritable($request);
     </div>
     <?php endif; ?>
 
+<script src="js/translations.js"></script>
+<script src="js/user-page-translations.js"></script>
+<script src="js/main.js"></script>
 <script>
 const requestWorkflowCsrfToken = <?= json_encode($request_workflow_csrf_token) ?>;
 const messagesContainer = document.getElementById('requestMessages');
@@ -913,12 +921,13 @@ function appendChatMessage(message) {
     meta.className = `flex flex-wrap items-center gap-x-3 gap-y-1 text-xs ${message.sender_role === 'clinic' ? 'text-blue-100' : 'text-slate-400'}`;
     const sender = document.createElement('span');
     sender.className = 'font-bold';
-    sender.textContent = `${message.sender_name} · ${message.sender_role === 'clinic' ? 'Clinic' : 'Admin'}`;
+    sender.textContent = `${message.sender_name} · ${i18nText(message.sender_role === 'clinic' ? 'chat_role_clinic' : 'chat_role_admin', message.sender_role === 'clinic' ? 'Clinic' : 'Admin')}`;
     const time = document.createElement('time');
     time.textContent = message.created_label;
     const body = document.createElement('p');
     body.className = 'mt-2 whitespace-pre-wrap break-words text-sm leading-6';
     body.textContent = message.message_text;
+    body.dir = 'auto';
     meta.append(sender, time);
     bubble.append(meta, body);
     article.appendChild(bubble);
@@ -927,7 +936,7 @@ function appendChatMessage(message) {
 }
 
 const chatRefreshCooldownSeconds = <?= (int) REQUEST_MESSAGE_REFRESH_COOLDOWN_SECONDS ?>;
-const chatRefreshDefaultMarkup = '<i class="fa-solid fa-rotate mr-1.5"></i>Refresh';
+function chatRefreshDefaultMarkup() { return '<i class="fa-solid fa-rotate me-1.5"></i>' + i18nText('refresh', 'Refresh'); }
 let chatRefreshCooldownUntil = 0;
 let chatRefreshCooldownTimer = null;
 
@@ -937,14 +946,14 @@ function renderChatRefreshCooldown(button) {
     const remaining = Math.ceil((chatRefreshCooldownUntil - Date.now()) / 1000);
     if (remaining > 0) {
         button.disabled = true;
-        button.innerHTML = `<i class="fa-regular fa-clock mr-1.5"></i>Refresh in ${remaining}s`;
+        button.innerHTML = `<i class="fa-regular fa-clock me-1.5"></i>${i18nText('refresh_in_seconds', 'Refresh in {seconds}s', {seconds: remaining})}`;
         chatRefreshCooldownTimer = setTimeout(() => renderChatRefreshCooldown(button), 250);
         return;
     }
     chatRefreshCooldownUntil = 0;
     chatRefreshCooldownTimer = null;
     button.disabled = false;
-    button.innerHTML = chatRefreshDefaultMarkup;
+    button.innerHTML = chatRefreshDefaultMarkup();
 }
 
 function startChatRefreshCooldown(button, seconds = chatRefreshCooldownSeconds) {
@@ -956,24 +965,24 @@ function startChatRefreshCooldown(button, seconds = chatRefreshCooldownSeconds) 
 document.getElementById('refreshMessagesButton')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
-    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i>Refreshing…';
+    button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-1.5"></i>' + i18nText('refreshing', 'Refreshing…');
     try {
         const response = await fetch(`api/request_messages.php?request_id=<?= (int) $request['id'] ?>&after_id=${latestMessageId()}&csrf_token=${encodeURIComponent(requestWorkflowCsrfToken)}`, {headers: {'Accept': 'application/json'}});
         const data = await response.json();
         if (response.status === 429) {
             startChatRefreshCooldown(button, data.retry_after);
-            throw new Error(data.message || 'Please wait before refreshing messages again.');
+            throw new Error(data.message || i18nText('wait_refresh_messages', 'Please wait before refreshing messages again.'));
         }
-        if (!response.ok || !data.success) throw new Error(data.message || 'Messages could not be loaded.');
+        if (!response.ok || !data.success) throw new Error(data.message || i18nText('error_load_messages', 'Messages could not be loaded.'));
         data.messages.forEach(appendChatMessage);
-        setChatStatus(data.messages.length ? `${data.messages.length} new message(s) loaded.` : 'No new messages.');
+        setChatStatus(data.messages.length ? i18nText('new_messages_loaded', '{count} new message(s) loaded.', {count: data.messages.length}) : i18nText('no_new_messages', 'No new messages.'));
         startChatRefreshCooldown(button);
     } catch (error) {
-        setChatStatus(error.message || 'Messages could not be loaded.', true);
+        setChatStatus(i18nApiMessage(error.message, 'error_load_messages'), true);
     } finally {
         if (!chatRefreshCooldownUntil) {
             button.disabled = false;
-            button.innerHTML = chatRefreshDefaultMarkup;
+            button.innerHTML = chatRefreshDefaultMarkup();
         }
     }
 });
@@ -983,7 +992,7 @@ document.getElementById('requestMessageForm')?.addEventListener('submit', async 
     const input = document.getElementById('requestMessageText');
     const button = document.getElementById('sendMessageButton');
     const messageText = input.value.trim();
-    if (!messageText) { setChatStatus('Write a message before sending.', true); return; }
+    if (!messageText) { setChatStatus(i18nText('write_before_sending', 'Write a message before sending.'), true); return; }
     button.disabled = true;
     try {
         const response = await fetch('api/send_request_message.php', {
@@ -992,19 +1001,19 @@ document.getElementById('requestMessageForm')?.addEventListener('submit', async 
             body: JSON.stringify({request_id: <?= (int) $request['id'] ?>, csrf_token: requestWorkflowCsrfToken, message_text: messageText})
         });
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'The message could not be sent.');
+        if (!response.ok || !data.success) throw new Error(data.message || i18nText('error_send_message', 'The message could not be sent.'));
         appendChatMessage(data.message);
         input.value = '';
-        setChatStatus('Message sent.');
+        setChatStatus(i18nText('message_sent', 'Message sent.'));
     } catch (error) {
-        setChatStatus(error.message || 'The message could not be sent.', true);
+        setChatStatus(i18nApiMessage(error.message, 'error_send_message'), true);
     } finally {
         button.disabled = false;
     }
 });
 
 document.getElementById('approveReviewButton')?.addEventListener('click', async event => {
-    if (!confirm('Approve the latest review and move this request to the payment stage? This confirms that you reviewed the latest files.')) return;
+    if (!confirm(i18nText('confirm_review_approval', 'Approve the latest review and move this request to the payment stage? This confirms that you reviewed the latest files.'))) return;
     const button = event.currentTarget;
     const statusBox = document.getElementById('reviewApprovalStatus');
     button.disabled = true;
@@ -1019,13 +1028,13 @@ document.getElementById('approveReviewButton')?.addEventListener('click', async 
             })
         });
         const data = await response.json();
-        if (!response.ok || !data.success) throw new Error(data.message || 'The plan approval could not be saved.');
-        statusBox.textContent = data.message;
+        if (!response.ok || !data.success) throw new Error(data.message || i18nText('error_plan_approval', 'The plan approval could not be saved.'));
+        statusBox.textContent = i18nApiMessage(data.message, 'review_approved');
         statusBox.className = 'mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800';
         statusBox.classList.remove('hidden');
         window.location.reload();
     } catch (error) {
-        statusBox.textContent = error.message || 'The plan approval could not be saved.';
+        statusBox.textContent = i18nApiMessage(error.message, 'error_plan_approval');
         statusBox.className = 'mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700';
         statusBox.classList.remove('hidden');
         button.disabled = false;

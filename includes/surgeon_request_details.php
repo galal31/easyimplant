@@ -23,7 +23,7 @@ foreach ($surgeonFiles as $file) {
 <?php if ($surgeonClinicView): ?><p class="mb-5 text-sm leading-6 text-slate-600">These are the case details you submitted. Review them and use the conversation with Easy Implant to request any changes or clarify the treatment before payment.</p><?php endif; ?>
 <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
     <?php foreach (['patient_name' => 'Patient Name', 'patient_age' => 'Patient Age', 'service_name_snapshot' => 'Surgical Service', 'proposed_date' => 'Proposed Operation Date'] as $key => $label): ?>
-        <?php if (isset($details[$key]) && $details[$key] !== ''): ?><div><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700"><?= htmlspecialchars((string) $details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
+        <?php if (isset($details[$key]) && $details[$key] !== ''): ?><div><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700" dir="auto"><?= htmlspecialchars((string) $details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
     <?php endforeach; ?>
 
     <?php if (($details['service_kind'] ?? null) === 'dental_implant' && ($details['implant_package'] ?? null) !== 'all_on_arches'): ?>
@@ -48,7 +48,7 @@ foreach ($surgeonFiles as $file) {
             <?php endforeach; ?>
         </div>
     <?php elseif (!empty($details['requires_quote']) && empty($details['total_price'])): ?>
-        <div class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-4 text-center font-bold text-orange-700" dir="rtl">سيتم الرد بعرض سعر</div>
+        <div data-i18n="quotation_notice" class="md:col-span-2 rounded-xl border border-orange-200 bg-orange-50 p-4 text-center font-bold text-orange-700">You will receive a quotation after review.</div>
     <?php endif; ?>
 
     <?php if (empty($details['requires_quote'])): ?>
@@ -71,7 +71,7 @@ foreach ($surgeonFiles as $file) {
     <?php if ($surgeonClinicView && ($details['service_kind'] ?? '') === 'dental_implant'): ?><p class="md:col-span-2 text-xs leading-5 text-slate-500"><?= ($details['implant_package'] ?? '') === 'all_on_arches' ? 'Each arch has its own treatment package, implant type and supplier. The arch subtotal combines team fees and any implants we supply for that arch; travel is added once to the whole request.' : 'The package, implant type and number of implants describe the treatment you selected. The implant provider identifies who supplies the implants, separately from the surgeon professional fees.' ?></p><?php endif; ?>
 
     <?php foreach (['medical_history' => 'Medical History & Considerations', 'notes' => 'Additional Notes'] as $key => $label): ?>
-        <?php if (!empty($details[$key])): ?><div class="md:col-span-2"><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700"><?= htmlspecialchars($details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
+        <?php if (!empty($details[$key])): ?><div class="md:col-span-2"><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700" dir="auto"><?= htmlspecialchars($details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
     <?php endforeach; ?>
 
     <?php if ($surgeonFiles): ?>

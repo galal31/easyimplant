@@ -2,6 +2,7 @@
 if (!defined('EASYIMPLANT_SKIP_SESSION')) define('EASYIMPLANT_SKIP_SESSION', true);
 require_once __DIR__ . '/includes/db_connect.php';
 require_once __DIR__ . '/includes/case_videos.php';
+require_once __DIR__ . '/includes/user_language.php';
 $escape = static fn($value): string => htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
 $slug = trim((string) ($_GET['slug'] ?? ''));
 $doctor = null;
@@ -25,7 +26,7 @@ if (!$doctor) http_response_code($unavailable ? 503 : 404);
 $qualifications = $doctor ? array_values(array_filter(array_map('trim', preg_split('/\R/u', (string) $doctor['qualifications'])))) : [];
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr" class="scroll-smooth">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" class="scroll-smooth">
 <head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= $escape($doctor ? $doctor['display_name'] . ' | Easy Implant' : 'Doctor profile | Easy Implant') ?></title>
@@ -88,6 +89,6 @@ $qualifications = $doctor ? array_values(array_filter(array_map('trim', preg_spl
         <?php endif; ?>
     </main>
     <?php include __DIR__ . '/includes/footer.php'; ?>
-    <script src="js/translations.js"></script><script src="js/main.js"></script><script src="js/case-videos.js"></script><script src="js/doctor-profile.js"></script>
+    <script src="js/translations.js"></script><script src="js/user-page-translations.js"></script><script src="js/main.js"></script><script src="js/case-videos.js"></script><script src="js/doctor-profile.js"></script>
 </body>
 </html>

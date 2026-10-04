@@ -71,10 +71,10 @@ $surgeonClosedChat = $surgeonClinicChat && in_array($request['status'], ['comple
             <article data-message-id="<?= (int) $message['id'] ?>" class="flex <?= $isMine ? 'justify-end' : 'justify-start' ?>">
                 <div class="max-w-[88%] rounded-2xl border px-4 py-3 <?= $isMine ? 'border-[#1d5f8c] bg-[#13324a] text-white' : 'border-slate-200 bg-white text-slate-700' ?>">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs <?= $isMine ? 'text-blue-100' : 'text-slate-400' ?>">
-                        <span class="font-bold"><?= htmlspecialchars($message['sender_name']) ?> · <?= $message['sender_role'] === 'admin' ? 'Admin' : 'Clinic' ?></span>
-                        <time><?= date('M d, Y, H:i', strtotime($message['created_at'])) ?></time>
+                        <span class="font-bold"><span dir="auto"><?= htmlspecialchars($message['sender_name']) ?></span> · <span><?= $message['sender_role'] === 'admin' ? 'Admin' : 'Clinic' ?></span></span>
+                        <time datetime="<?= htmlspecialchars(date('c', strtotime($message['created_at']))) ?>" data-localized-datetime><?= date('M d, Y, H:i', strtotime($message['created_at'])) ?></time>
                     </div>
-                    <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6"><?= htmlspecialchars($message['message_text']) ?></p>
+                    <p class="mt-2 whitespace-pre-wrap break-words text-sm leading-6" dir="auto"><?= htmlspecialchars($message['message_text']) ?></p>
                 </div>
             </article>
         <?php endforeach; ?>
@@ -89,7 +89,7 @@ $surgeonClosedChat = $surgeonClinicChat && in_array($request['status'], ['comple
                     id="requestMessageText"
                     maxlength="<?= REQUEST_MESSAGE_MAX_LENGTH ?>"
                     rows="3"
-                    class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-[#1d5f8c] focus:ring-[#1d5f8c] resize-none"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-[#1d5f8c] focus:ring-[#1d5f8c] resize-none" dir="auto"
                     placeholder="Write a message…"
                     style="min-height:70px;"></textarea>
                 <button

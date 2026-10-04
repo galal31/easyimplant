@@ -3,6 +3,7 @@ require_once 'includes/db_connect.php';
 require_once __DIR__ . '/includes/implant_types.php';
 require_once __DIR__ . '/includes/locations.php';
 require_once __DIR__ . '/includes/surgeon_services.php';
+require_once __DIR__ . '/includes/user_language.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'clinic') {
     header('Location: login.php');
@@ -13,6 +14,7 @@ $userId = (int) $_SESSION['user_id'];
 $fullName = $_SESSION['full_name'];
 $clinicName = $_SESSION['clinic_name'];
 $pageError = '';
+$pageErrorKey = '';
 $travelSetting = null;
 $implantTypes = [];
 $customServices = [];
@@ -32,11 +34,13 @@ try {
     if (!$clinic || strtolower((string) $clinic['country']) !== 'egypt') {
         http_response_code(403);
         $pageError = 'Surgeon requests are currently available to clinics inside Egypt only.';
+        $pageErrorKey = 'surgeon_error_egypt_only';
     } else {
         $settings = getSurgeonGovernorateSettings($pdo);
         $travelSetting = $settings[$clinic['governorate'] ?? ''] ?? null;
         if (!$travelSetting || !$travelSetting['is_available']) {
             $pageError = 'Surgeon service is not currently available for your clinic governorate. Please contact support.';
+            $pageErrorKey = 'surgeon_error_area_unavailable';
         } else {
             $implantTypes = getActiveImplantTypes($pdo);
             $customServices = getActiveSurgeonServices($pdo);
@@ -46,6 +50,7 @@ try {
 } catch (Throwable $e) {
     error_log('Surgeon Request Page Error: ' . $e->getMessage());
     $pageError = 'Could not load surgeon services. Please try again later.';
+    $pageErrorKey = 'surgeon_error_load';
 }
 
 $implantPrices = [];
@@ -58,7 +63,7 @@ foreach ($regularPackages as $code => $package) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" data-i18n-title="request_surgeon_title">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -66,13 +71,14 @@ foreach ($regularPackages as $code => $package) {
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/user-i18n.css">
     <style>body { font-family: 'Outfit', 'Cairo', sans-serif; background: #f4f8fb; }</style>
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased">
 <nav class="sticky top-0 z-30 border-b border-slate-200 bg-white">
     <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8"><div class="flex h-16 justify-between">
-        <div class="flex items-center gap-3"><a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]"><i class="fa-solid fa-arrow-left text-sm"></i></a><span class="hidden text-lg font-bold text-[#13324a] sm:block">Easy Implant</span></div>
-        <div class="hidden text-right sm:block self-center"><p class="text-sm font-bold leading-tight text-[#13324a]"><?= htmlspecialchars($fullName) ?></p><p class="text-xs font-medium text-slate-500"><?= htmlspecialchars($clinicName) ?></p></div>
+        <div class="flex items-center gap-3"><a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]" aria-label="Back to Dashboard"><i class="fa-solid fa-arrow-left rtl-flip text-sm"></i></a><span class="hidden text-lg font-bold text-[#13324a] sm:block">Easy Implant</span></div>
+        <div class="flex items-center gap-3"><?php $userLanguageSwitcherCompact = true; require __DIR__ . '/includes/user_language_switcher.php'; ?><div class="hidden text-end sm:block self-center" dir="auto"><p class="text-sm font-bold leading-tight text-[#13324a]"><?= htmlspecialchars($fullName) ?></p><p class="text-xs font-medium text-slate-500"><?= htmlspecialchars($clinicName) ?></p></div></div>
     </div></div>
 </nav>
 
@@ -83,7 +89,7 @@ foreach ($regularPackages as $code => $package) {
     </div>
 
     <?php if ($pageError): ?>
-        <div class="rounded-3xl border border-orange-200 bg-orange-50 p-8 text-center shadow-sm"><i class="fa-solid fa-circle-info mb-3 text-2xl text-orange-500"></i><p class="font-semibold text-orange-800"><?= htmlspecialchars($pageError) ?></p><a href="clinic_dashboard.php" class="mt-5 inline-flex rounded-xl bg-[#13324a] px-5 py-2.5 text-sm font-bold text-white">Back to Dashboard</a></div>
+        <div class="rounded-3xl border border-orange-200 bg-orange-50 p-8 text-center shadow-sm"><i class="fa-solid fa-circle-info mb-3 text-2xl text-orange-500"></i><p class="font-semibold text-orange-800"<?= $pageErrorKey ? ' data-i18n="' . htmlspecialchars($pageErrorKey, ENT_QUOTES, 'UTF-8') . '"' : '' ?>><?= htmlspecialchars($pageError) ?></p><a href="clinic_dashboard.php" class="mt-5 inline-flex rounded-xl bg-[#13324a] px-5 py-2.5 text-sm font-bold text-white">Back to Dashboard</a></div>
     <?php else: ?>
     <form id="surgeonForm" class="space-y-6">
         <input type="hidden" name="csrf_token" id="csrfToken" value="<?= htmlspecialchars($_SESSION['surgeon_request_csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
@@ -95,10 +101,10 @@ foreach ($regularPackages as $code => $package) {
             <label class="mb-2 block text-sm font-semibold text-[#13324a]">Required Service</label>
             <select name="surgical_service" id="surgicalService" required class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a] focus:border-[#2b8a9e] focus:ring-2 focus:ring-[#2b8a9e]">
                 <option value="">Select surgical service</option>
-                <option value="dental_implant">Dental Implant — زرع أسنان</option>
+                <option value="dental_implant" data-i18n="dental_implant_service">Dental Implant</option>
                 <?php foreach ($customServices as $service): ?><option value="custom:<?= (int) $service['id'] ?>"><?= htmlspecialchars($service['name']) ?></option><?php endforeach; ?>
             </select>
-            <div id="quoteNotice" class="mt-4 hidden rounded-xl border border-orange-200 bg-orange-50 p-4 text-center font-bold text-orange-700" dir="rtl">سيتم الرد بعرض سعر</div>
+            <div id="quoteNotice" data-i18n="quotation_notice" class="mt-4 hidden rounded-xl border border-orange-200 bg-orange-50 p-4 text-center font-bold text-orange-700">You will receive a quotation after review.</div>
         </section>
 
         <section id="implantSection" class="hidden rounded-3xl border border-teal-100 bg-white p-6 shadow-sm sm:p-8">
@@ -134,7 +140,7 @@ foreach ($regularPackages as $code => $package) {
                 <div class="grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
                     <div><p id="workLabel" class="text-xs text-slate-500">Professional work</p><p id="workTotal" class="mt-1 font-bold text-[#13324a]">0.00 EGP</p></div>
                     <div><p class="text-xs text-slate-500">Implants supplied by us</p><p id="implantCostTotal" class="mt-1 font-bold text-[#13324a]">0.00 EGP</p></div>
-                    <div><p class="text-xs text-slate-500">Travel to <?= htmlspecialchars($travelSetting['label']) ?></p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) $travelSetting['price'], 2) ?> EGP</p></div>
+                    <div><p class="text-xs text-slate-500"><span>Travel to</span> <span><?= htmlspecialchars($travelSetting['label']) ?></span></p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) $travelSetting['price'], 2) ?> EGP</p></div>
                     <div class="rounded-lg bg-[#13324a] px-3 py-2 text-white"><p class="text-xs text-slate-300">Estimated total</p><p id="estimatedTotal" class="mt-1 text-base font-extrabold">0.00 EGP</p></div>
                 </div>
             </div>
@@ -143,11 +149,11 @@ foreach ($regularPackages as $code => $package) {
         <section class="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
             <h2 class="mb-5 text-lg font-bold text-[#13324a]">Patient Details</h2>
             <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Patient Name</label><input type="text" name="patient_name" maxlength="100" required class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></div>
+                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Patient Name</label><input type="text" name="patient_name" maxlength="100" required dir="auto" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></div>
                 <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Patient Age</label><input type="number" name="patient_age" required min="1" max="120" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></div>
-                <div class="md:col-span-2"><label class="mb-2 block text-sm font-semibold text-[#13324a]">Medical History & Considerations</label><textarea name="medical_history" required rows="3" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
+                <div class="md:col-span-2"><label class="mb-2 block text-sm font-semibold text-[#13324a]">Medical History & Considerations</label><textarea name="medical_history" required rows="3" dir="auto" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
                 <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Proposed Operation Date</label><input type="date" name="proposed_date" required min="<?= $minimumProposedDate ?>" class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a]"><p class="mt-2 text-xs text-slate-500">Choose a date at least 3 calendar days from today (Cairo time).</p></div>
-                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Additional Notes</label><textarea name="notes" rows="3" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
+                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Additional Notes</label><textarea name="notes" rows="3" dir="auto" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
             </div>
         </section>
 
@@ -169,6 +175,10 @@ foreach ($regularPackages as $code => $package) {
     <?php endif; ?>
 </main>
 
+<script src="js/translations.js"></script>
+<script src="js/user-page-translations.js"></script>
+<script src="js/main.js"></script>
+
 <?php if (!$pageError): ?>
 <script>
 const implantPrices = <?= json_encode($implantPrices, JSON_UNESCAPED_SLASHES) ?>;
@@ -185,7 +195,7 @@ const allOnFields = document.getElementById('allOnFields');
 const regularInputs = [document.getElementById('implantType'), document.getElementById('implantCount'), document.getElementById('implantProvider')];
 const archNames = ['upper', 'lower'];
 
-function money(value) { return Number(value).toLocaleString('en-EG', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' EGP'; }
+function money(value) { return Number(value).toLocaleString(currentLang === 'ar' ? 'ar-EG' : 'en-EG', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ' + i18nText('currency_egp', 'EGP'); }
 function setRequiredEnabled(element, enabled) { element.disabled = !enabled; element.required = enabled; }
 
 function syncArch(arch) {
@@ -226,7 +236,7 @@ function updatePrice() {
         if (ready) {
             workTotal = count * regularPackageFees[implantPackage.value];
             implantTotal = provider === 'easy_implant' ? count * implantPrices[typeId] : 0;
-            document.getElementById('workLabel').textContent = 'Surgeon work';
+            document.getElementById('workLabel').textContent = i18nText('surgeon_work', 'Surgeon work');
         }
     } else if (implantPackage.value === 'all_on_arches') {
         let selectedArches = 0;
@@ -242,11 +252,11 @@ function updatePrice() {
             const teamFee = Number(allOnPrices[packageCode]);
             const implantCost = provider === 'easy_implant' ? count * implantPrices[typeId] : 0;
             workTotal += teamFee; implantTotal += implantCost;
-            summary.textContent = `${count} implants · Team ${money(teamFee)} · Implants ${money(implantCost)}`;
+            summary.textContent = i18nText('arch_price_summary', '{count} implants · Team {team} · Implants {implants}', {count, team: money(teamFee), implants: money(implantCost)});
             summary.classList.remove('hidden');
         });
         ready = selectedArches > 0 && !incomplete;
-        document.getElementById('workLabel').textContent = 'Team work for selected arches';
+        document.getElementById('workLabel').textContent = i18nText('team_work_arches', 'Team work for selected arches');
     }
     breakdown.classList.toggle('hidden', !ready);
     if (!ready) return;
@@ -272,7 +282,7 @@ function showSelectedFiles(category) {
     Array.from(input.files).forEach((file, index) => {
         const row = document.createElement('div');
         row.className = 'rounded-lg border border-slate-200 bg-white p-3';
-        row.innerHTML = `<div class="flex justify-between gap-3 text-xs"><span class="truncate font-semibold text-slate-700"></span><span class="shrink-0 text-slate-400">${(file.size / 1024 / 1024).toFixed(1)} MB</span></div><div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-0 rounded-full bg-[#2b8a9e]" data-progress></div></div><p class="mt-1 text-[11px] text-slate-400" data-status>Ready to upload</p>`;
+        row.innerHTML = `<div class="flex justify-between gap-3 text-xs"><span class="truncate font-semibold text-slate-700"></span><span class="shrink-0 text-slate-400">${(file.size / 1024 / 1024).toFixed(1)} MB</span></div><div class="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100"><div class="h-full w-0 rounded-full bg-[#2b8a9e]" data-progress></div></div><p class="mt-1 text-[11px] text-slate-400" data-status>${i18nText('ready_upload', 'Ready to upload')}</p>`;
         row.querySelector('span').textContent = file.name;
         row.dataset.fileIndex = String(index);
         list.appendChild(row);
@@ -284,25 +294,25 @@ async function uploadFile(file, category, row) {
     const csrfToken = document.getElementById('csrfToken').value;
     const response = await fetch('api/generate_surgeon_upload_url.php', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({csrf_token: csrfToken, category, filename: file.name, content_type: file.type || 'application/octet-stream', file_size: file.size})});
     const data = await response.json();
-    if (!response.ok || !data.presigned_url) throw new Error(data.error || `Could not prepare ${file.name} for upload.`);
+    if (!response.ok || !data.presigned_url) throw new Error(data.error || i18nText('error_prepare_upload', 'Could not prepare {name} for upload.', {name: file.name}));
     const progress = row.querySelector('[data-progress]');
     const status = row.querySelector('[data-status]');
-    status.textContent = 'Uploading directly to Cloudflare R2...';
+    status.textContent = i18nText('uploading_secure_storage', 'Uploading directly to Cloudflare R2...');
     try {
         await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
             xhr.open('PUT', data.presigned_url, true);
             xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
             xhr.upload.onprogress = event => { if (event.lengthComputable) progress.style.width = Math.round(event.loaded / event.total * 100) + '%'; };
-            xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed for ${file.name}.`));
-            xhr.onerror = () => reject(new Error(`Network error while uploading ${file.name}.`));
+            xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(i18nText('error_upload_named_file', 'Upload failed for {name}.', {name: file.name})));
+            xhr.onerror = () => reject(new Error(i18nText('error_upload_named_network', 'Network error while uploading {name}.', {name: file.name})));
             xhr.send(file);
         });
     } catch (error) {
         await cleanupUploads([{file_path: data.object_key}]);
         throw error;
     }
-    progress.style.width = '100%'; status.textContent = 'Uploaded'; status.className = 'mt-1 text-[11px] font-semibold text-emerald-600';
+    progress.style.width = '100%'; status.textContent = i18nText('uploaded', 'Uploaded'); status.className = 'mt-1 text-[11px] font-semibold text-emerald-600';
     return {file_path: data.object_key, file_category: category, original_name: file.name, content_type: file.type || 'application/octet-stream', file_size: file.size};
 }
 
@@ -317,34 +327,38 @@ form.addEventListener('submit', async event => {
     const errorMsg = document.getElementById('errorMsg');
     const successMsg = document.getElementById('successMsg');
     const button = document.getElementById('submitBtn');
-    if (implantPackage.value === 'all_on_arches' && !archNames.some(arch => document.getElementById(arch + 'Package').value)) { errorMsg.textContent = 'Choose at least one arch for the All-on treatment.'; errorMsg.classList.remove('hidden'); return; }
+    if (implantPackage.value === 'all_on_arches' && !archNames.some(arch => document.getElementById(arch + 'Package').value)) { errorMsg.textContent = i18nText('error_choose_arch', 'Choose at least one arch for the All-on treatment.'); errorMsg.classList.remove('hidden'); return; }
     let uploadedFiles = [];
     button.disabled = true; errorMsg.classList.add('hidden'); successMsg.classList.add('hidden');
     try {
         const totalFiles = document.getElementById('cbctFiles').files.length + document.getElementById('labFiles').files.length;
-        if (totalFiles > 40) throw new Error('You can upload up to 40 files per request.');
-        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Uploading files directly to R2...';
+        if (totalFiles > 40) throw new Error(i18nText('error_file_limit', 'You can upload up to 40 files per request.'));
+        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('uploading_files', 'Uploading files directly to R2...');
         for (const category of ['cbct', 'lab']) {
             const input = document.getElementById(category + 'Files');
             const rows = document.querySelectorAll(`#${category}FileList [data-file-index]`);
             for (let index = 0; index < input.files.length; index++) uploadedFiles.push(await uploadFile(input.files[index], category, rows[index]));
         }
-        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Saving request...';
+        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('saving_request', 'Saving request...');
         const formData = new FormData(form);
         formData.delete('cbct_files'); formData.delete('lab_files');
         formData.append('surgeon_files', JSON.stringify(uploadedFiles));
         const response = await fetch('api/submit_surgeon.php', {method: 'POST', body: formData});
         const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not save the request.');
-        successMsg.textContent = data.success; successMsg.classList.remove('hidden'); uploadedFiles = [];
+        if (!response.ok) throw new Error(data.error || i18nText('error_save_request', 'Could not save the request.'));
+        successMsg.textContent = serviceSelect.value.startsWith('custom:')
+            ? i18nText('surgeon_submitted_quote', 'Surgeon request submitted successfully. You will receive a quotation.')
+            : i18nText('surgeon_submitted_estimate', 'Surgeon request submitted successfully. Estimated total: {total}.', {total: document.getElementById('estimatedTotal').textContent});
+        successMsg.classList.remove('hidden'); uploadedFiles = [];
         setTimeout(() => { window.location.href = 'view_request.php?id=' + data.request_id; }, 1200);
     } catch (error) {
         await cleanupUploads(uploadedFiles);
-        errorMsg.textContent = error.message; errorMsg.classList.remove('hidden');
+        errorMsg.textContent = i18nApiMessage(error.message); errorMsg.classList.remove('hidden');
     } finally {
-        button.disabled = false; button.textContent = 'Submit Request';
+        button.disabled = false; button.textContent = i18nText('submit_request', 'Submit Request');
     }
 });
+document.addEventListener('easyimplant:languagechange', updatePrice);
 </script>
 <?php endif; ?>
 </body>

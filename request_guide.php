@@ -4,6 +4,7 @@ require_once 'includes/db_connect.php';
 require_once 'includes/surgical_guide_pricing.php';
 require_once 'includes/implant_types.php';
 require_once 'includes/surgical_guide_kits.php';
+require_once 'includes/user_language.php';
 
 // Check if user is logged in and is a clinic
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'clinic') {
@@ -21,7 +22,7 @@ $guided_kit_options = getActiveSurgicalGuideKitOptions($pdo);
 $minimum_operation_date = getMinimumGuideOperationDate();
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" data-i18n-title="request_guide_title">
 
 <head>
     <meta charset="UTF-8" />
@@ -30,6 +31,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="css/user-i18n.css">
     <style>
         body {
             font-family: 'Outfit', 'Cairo', sans-serif;
@@ -46,12 +48,13 @@ $minimum_operation_date = getMinimumGuideOperationDate();
             <div class="flex justify-between h-16">
                 <div class="flex items-center gap-3">
                     <a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-slate-200 hover:text-[#13324a]">
-                        <i class="fa-solid fa-arrow-left text-sm"></i>
+                        <i class="fa-solid fa-arrow-left rtl-flip text-sm"></i>
                     </a>
                     <span class="font-bold text-[#13324a] text-lg hidden sm:block">Easy Implant</span>
                 </div>
                 <div class="flex items-center gap-4">
-                    <div class="hidden sm:block text-right">
+                    <?php $userLanguageSwitcherCompact = true; require __DIR__ . '/includes/user_language_switcher.php'; ?>
+                    <div class="hidden sm:block text-end" dir="auto">
                         <p class="text-sm font-bold text-[#13324a] leading-tight"><?= htmlspecialchars($full_name) ?></p>
                         <p class="text-xs font-medium text-slate-500"><?= htmlspecialchars($clinic_name) ?></p>
                     </div>
@@ -88,7 +91,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                             <?php endforeach; ?>
                             <option value="other">Other</option>
                         </select>
-                        <input type="text" id="implantTypeOther" name="implant_type_other" class="hidden mt-3 block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a]" placeholder="Write implant type name">
+                        <input type="text" id="implantTypeOther" name="implant_type_other" dir="auto" class="hidden mt-3 block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a]" placeholder="Write implant type name">
                     </div>
 
                     <div>
@@ -141,7 +144,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                                 <div class="grid gap-4 sm:grid-cols-2">
                                     <div>
                                         <label class="mb-2 block text-sm font-semibold text-[#13324a]">Kit name</label>
-                                        <input id="guidedKitName" type="text" name="guided_kit_name" maxlength="190" class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a] transition focus:border-[#1d5f8c] focus:ring-2 focus:ring-[#1d5f8c]" placeholder="Enter the guided kit name">
+                                        <input id="guidedKitName" type="text" name="guided_kit_name" maxlength="190" dir="auto" class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a] transition focus:border-[#1d5f8c] focus:ring-2 focus:ring-[#1d5f8c]" placeholder="Enter the guided kit name">
                                     </div>
                                     <div>
                                         <label class="mb-2 block text-sm font-semibold text-[#13324a]">Kit type</label>
@@ -268,7 +271,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
 
                     <div class="xl:col-span-2">
                         <label class="block text-sm font-semibold text-[#13324a] mb-2">Additional Notes (Optional)</label>
-                        <textarea name="notes" rows="3" class="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a]" placeholder="Any extra information for the planning team..."></textarea>
+                        <textarea name="notes" rows="3" dir="auto" class="block w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a]" placeholder="Any extra information for the planning team..."></textarea>
                     </div>
                 </div>
 
@@ -312,9 +315,9 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                     <div class="flex justify-between gap-3"><span>Clinic print first implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['clinic_print_first_implant_price']) ?></span></div>
                     <div class="flex justify-between gap-3"><span>Admin print first implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['admin_print_first_implant_price']) ?></span></div>
                     <div class="flex justify-between gap-3"><span>Additional implant</span><span class="font-bold text-[#13324a]"><?= formatMoney($pricing['additional_implant_price']) ?></span></div>
-                    <div class="flex justify-between gap-3"><span>Your protected rule</span><span class="font-bold text-[#13324a]">Every <?= (int) $pricing['clinic_free_implant_every'] ?></span></div>
+                    <div class="flex justify-between gap-3"><span>Your protected rule</span><span class="font-bold text-[#13324a]"><span>Every</span> <?= (int) $pricing['clinic_free_implant_every'] ?></span></div>
                     <div class="flex justify-between gap-3"><span>Current progress</span><span class="font-bold text-[#13324a]"><?= (int) $pricing['clinic_free_progress'] ?> / <?= (int) $pricing['clinic_free_implant_every'] ?></span></div>
-                    <div class="flex justify-between gap-3"><span>Next-cycle rule</span><span class="font-bold text-[#13324a]">Every <?= (int) $pricing['next_free_implant_every'] ?></span></div>
+                    <div class="flex justify-between gap-3"><span>Next-cycle rule</span><span class="font-bold text-[#13324a]"><span>Every</span> <?= (int) $pricing['next_free_implant_every'] ?></span></div>
                 </div>
             </div>
         </aside>
@@ -322,6 +325,9 @@ $minimum_operation_date = getMinimumGuideOperationDate();
 
     </div>
 
+    <script src="js/translations.js"></script>
+    <script src="js/user-page-translations.js"></script>
+    <script src="js/main.js"></script>
     <script>
         const guidePricing = <?= json_encode($pricing) ?>;
         const loadedPricingVersion = <?= json_encode($pricing['version']) ?>;
@@ -329,7 +335,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
         const lowerRegions = <?= json_encode(GUIDE_LOWER_REGIONS) ?>;
 
         function money(amount) {
-            return Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' EGP';
+            return Number(amount || 0).toLocaleString(currentLang === 'ar' ? 'ar-EG' : 'en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + i18nText('currency_egp', 'EGP');
         }
 
         function getRegionTotal(regions) {
@@ -383,13 +389,13 @@ $minimum_operation_date = getMinimumGuideOperationDate();
             document.getElementById('currentImplants').textContent = totalImplants;
             document.getElementById('freeImplants').textContent = freeImplants;
             document.getElementById('priceBreakdown').innerHTML = `
-                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Upper (${upperCount})</span><span class="font-bold">${money(upperSubtotal)}</span></div>
-                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Lower (${lowerCount})</span><span class="font-bold">${money(lowerSubtotal)}</span></div>
-                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Delivery method first price</span><span class="font-bold">${money(firstPrice)}</span></div>
-                <div class="flex justify-between gap-3 rounded-xl bg-emerald-400/15 px-3 py-2"><span>Free implant discount</span><span class="font-bold">-${money(discount)}</span></div>
-                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>Reward progress after request</span><span class="font-bold">${freeProgress} / ${activeFreeEvery}</span></div>
-                ${rewardRules.some((item) => item.ruleUsed !== rewardRules[0]?.ruleUsed) ? `<div class="rounded-xl bg-amber-300/15 px-3 py-2 text-xs">This request finishes your protected rule and continues on the current next-cycle rule.</div>` : ''}
-                ${rentalPrice > 0 ? `<div class="flex justify-between gap-3 rounded-xl bg-cyan-400/15 px-3 py-2"><span>Guided kit rental</span><span class="font-bold">${money(rentalPrice)}</span></div>` : ''}
+                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>${i18nText('upper_price', 'Upper ({count})', {count: upperCount})}</span><span class="font-bold">${money(upperSubtotal)}</span></div>
+                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>${i18nText('lower_price', 'Lower ({count})', {count: lowerCount})}</span><span class="font-bold">${money(lowerSubtotal)}</span></div>
+                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>${i18nText('delivery_first_price', 'Delivery method first price')}</span><span class="font-bold">${money(firstPrice)}</span></div>
+                <div class="flex justify-between gap-3 rounded-xl bg-emerald-400/15 px-3 py-2"><span>${i18nText('free_implant_discount', 'Free implant discount')}</span><span class="font-bold">-${money(discount)}</span></div>
+                <div class="flex justify-between gap-3 rounded-xl bg-white/10 px-3 py-2"><span>${i18nText('reward_progress_after', 'Reward progress after request')}</span><span class="font-bold">${freeProgress} / ${activeFreeEvery}</span></div>
+                ${rewardRules.some((item) => item.ruleUsed !== rewardRules[0]?.ruleUsed) ? `<div class="rounded-xl bg-amber-300/15 px-3 py-2 text-xs">${i18nText('protected_rule_completed', 'This request finishes your protected rule and continues on the current next-cycle rule.')}</div>` : ''}
+                ${rentalPrice > 0 ? `<div class="flex justify-between gap-3 rounded-xl bg-cyan-400/15 px-3 py-2"><span>${i18nText('guided_kit_rental', 'Guided kit rental')}</span><span class="font-bold">${money(rentalPrice)}</span></div>` : ''}
             `;
         }
 
@@ -401,7 +407,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
 
         function setupFileInput(inputId, displayId) {
             document.getElementById(inputId).addEventListener('change', function(e) {
-                document.getElementById(displayId).textContent = e.target.files[0] ? 'Selected: ' + e.target.files[0].name : '';
+                document.getElementById(displayId).textContent = e.target.files[0] ? i18nText('selected_file', 'Selected: {name}', {name: e.target.files[0].name}) : '';
             });
         }
         setupFileInput('cbct_file', 'cbctFileName');
@@ -462,7 +468,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
         guidedKitOption.addEventListener('change', calculateEstimate);
         guidedKitImages.addEventListener('change', () => {
             const files = Array.from(guidedKitImages.files || []);
-            document.getElementById('guidedKitImageNames').textContent = files.length ? `${files.length} image(s) selected` : '';
+            document.getElementById('guidedKitImageNames').textContent = files.length ? i18nText('images_selected', '{count} image(s) selected', {count: files.length}) : '';
         });
         updateGuidedKitAvailability();
 
@@ -485,7 +491,7 @@ $minimum_operation_date = getMinimumGuideOperationDate();
             })
         });
         const presignedData = await presignedRes.json();
-        if (!presignedRes.ok || presignedData.error) throw new Error(presignedData.error || 'Failed to get secure upload URL.');
+        if (!presignedRes.ok || presignedData.error) throw new Error(presignedData.error || i18nText('error_upload_url', 'Failed to get secure upload URL.'));
 
         await new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -501,9 +507,9 @@ $minimum_operation_date = getMinimumGuideOperationDate();
             };
             xhr.onload = () => {
                 if (xhr.status === 200) resolve();
-                else reject(new Error('Failed to upload file.'));
+                else reject(new Error(i18nText('error_upload_file', 'Failed to upload file.')));
             };
-            xhr.onerror = () => reject(new Error('Network error during file upload.'));
+            xhr.onerror = () => reject(new Error(i18nText('error_upload_network', 'Network error during file upload.')));
             xhr.send(file);
         });
         return presignedData.object_key;
@@ -520,31 +526,31 @@ $minimum_operation_date = getMinimumGuideOperationDate();
             const kitImageFiles = Array.from(guidedKitImages.files || []);
 
             if (kitImageFiles.length > 8 || kitImageFiles.some((file) => file.size > 10 * 1024 * 1024)) {
-                errorMsg.textContent = 'Please select no more than 8 kit images, with a maximum size of 10 MB each.';
+                errorMsg.textContent = i18nText('error_kit_images', 'Please select no more than 8 kit images, with a maximum size of 10 MB each.');
                 errorMsg.classList.remove('hidden');
                 return;
             }
 
             if (!cbctInput.files[0] || !stlInput.files[0]) {
-                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i> Please select both CBCT and STL files.';
+                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation me-1"></i> ' + i18nText('error_select_scans', 'Please select both CBCT and STL files.');
                 errorMsg.classList.remove('hidden');
                 return;
             }
 
             const requestedImplants = getRegionTotal(upperRegions) + getRegionTotal(lowerRegions);
             if (requestedImplants < 1) {
-                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i> Please enter at least one implant location.';
+                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation me-1"></i> ' + i18nText('error_implant_location', 'Please enter at least one implant location.');
                 errorMsg.classList.remove('hidden');
                 return;
             }
 
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Uploading Files...';
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('uploading_files_short', 'Uploading Files...');
             errorMsg.classList.add('hidden');
             successMsg.classList.add('hidden');
 
             try {
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Verifying Current Price...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('verifying_price', 'Verifying Current Price...');
                 const pricingCheckBody = new FormData(form);
                 pricingCheckBody.delete('cbct_file');
                 pricingCheckBody.delete('stl_file');
@@ -557,10 +563,10 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                 });
                 const pricingCheckData = await pricingCheckRes.json();
                 if (!pricingCheckRes.ok || !pricingCheckData.success) {
-                    throw new Error(pricingCheckData.error || 'Could not verify the current pricing.');
+                    throw new Error(pricingCheckData.error || i18nText('error_verify_price', 'Could not verify the current pricing.'));
                 }
 
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Uploading Files...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('uploading_files_short', 'Uploading Files...');
                 // Upload files consecutively to ensure stable UI progress bars
                 const cbctKey = await uploadFileToCloud(cbctInput.files[0], 'cbctProgressContainer', 'cbctProgressBar', 'cbctProgressText');
                 const stlKey = await uploadFileToCloud(stlInput.files[0], 'stlProgressContainer', 'stlProgressBar', 'stlProgressText');
@@ -571,14 +577,14 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                     kitUploadStatus.classList.remove('hidden');
                     for (let index = 0; index < kitImageFiles.length; index++) {
                         const file = kitImageFiles[index];
-                        kitUploadStatus.textContent = `Uploading kit image ${index + 1} of ${kitImageFiles.length}...`;
+                        kitUploadStatus.textContent = i18nText('uploading_kit_image', 'Uploading kit image {current} of {total}...', {current: index + 1, total: kitImageFiles.length});
                         const key = await uploadFileToCloud(file, null, null, null, 'api/generate_guide_kit_upload_url.php');
                         guidedKitUploads.push({ key, name: file.name });
                     }
-                    kitUploadStatus.textContent = 'Kit images uploaded.';
+                    kitUploadStatus.textContent = i18nText('kit_images_uploaded', 'Kit images uploaded.');
                 }
 
-                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Submitting Request...';
+                btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('submitting_request', 'Submitting Request...');
 
                 const formData = new FormData(form);
                 formData.append('cbct_file_path', cbctKey);
@@ -605,26 +611,25 @@ $minimum_operation_date = getMinimumGuideOperationDate();
                     document.getElementById('stlProgressContainer').classList.add('hidden');
                     document.getElementById('guidedKitUploadStatus').classList.add('hidden');
                     updateGuidedKitAvailability();
-                    successMsg.innerHTML = '<i class="fa-solid fa-check-circle mr-1"></i> ' + submitData.success
-                        + ' Final price: ' + money(submitData.total_price)
-                        + '. Free implants: ' + Number(submitData.free_implants || 0) + '.';
+                    successMsg.innerHTML = '<i class="fa-solid fa-check-circle me-1"></i> ' + i18nText('guide_request_success', 'Request submitted successfully. Final price: {price}. Free implants: {free}.', {price: money(submitData.total_price), free: Number(submitData.free_implants || 0)});
                     successMsg.classList.remove('hidden');
                     setTimeout(() => {
                         window.location.href = 'clinic_dashboard.php';
                     }, 2000);
                 } else {
-                    throw new Error(submitData.error || 'An error occurred while saving the request.');
+                    throw new Error(submitData.error || i18nText('error_save_request', 'An error occurred while saving the request.'));
                 }
             } catch (err) {
-                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation mr-1"></i> ' + err.message;
+                errorMsg.innerHTML = '<i class="fa-solid fa-circle-exclamation me-1"></i> ' + i18nApiMessage(err.message);
                 errorMsg.classList.remove('hidden');
                 document.getElementById('cbctProgressContainer').classList.add('hidden');
                 document.getElementById('stlProgressContainer').classList.add('hidden');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = 'Submit Request';
+                btn.innerHTML = i18nText('submit_request', 'Submit Request');
             }
         });
+        document.addEventListener('easyimplant:languagechange', calculateEstimate);
     </script>
 </body>
 

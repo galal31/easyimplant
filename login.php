@@ -1,17 +1,19 @@
 <?php
 require_once __DIR__ . '/includes/db_connect.php';
 require_once __DIR__ . '/includes/system_settings.php';
+require_once __DIR__ . '/includes/user_language.php';
 $loginSystemIconUrl = getSystemIconUrl($pdo);
 $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
 ?>
 <!DOCTYPE html>
-<html lang="en" dir="ltr" class="scroll-smooth">
+<html lang="<?= userLanguageAttribute() ?>" dir="<?= userDirectionAttribute() ?>" class="scroll-smooth" data-i18n-title="login_title">
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Login | Easy Implant</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Cairo:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+    <link rel="stylesheet" href="css/user-i18n.css" />
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body { font-family: 'Outfit', 'Cairo', sans-serif; background: #f4f8fb; }
@@ -20,6 +22,7 @@ $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, 
 <body class="bg-slate-50 flex items-center justify-center min-h-screen px-4">
 
     <div class="max-w-md w-full bg-white rounded-3xl shadow-lg border border-slate-200 p-8">
+        <div class="mb-5 flex justify-end"><?php $userLanguageSwitcherCompact = true; include __DIR__ . '/includes/user_language_switcher.php'; ?></div>
         <div class="text-center mb-8">
             <a href="index.php" class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#13324a] text-white shadow-md mb-4">
                 <?php if ($loginSystemIconUrl): ?>
@@ -28,8 +31,8 @@ $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, 
                     <i class="fa-solid fa-tooth text-xl"></i>
                 <?php endif; ?>
             </a>
-            <h2 class="text-2xl font-bold text-[#13324a]">Welcome Back</h2>
-            <p class="text-sm text-slate-500 mt-2">Sign in to your clinic account to manage requests.</p>
+            <h2 class="text-2xl font-bold text-[#13324a]" data-i18n="login_heading">Welcome Back</h2>
+            <p class="text-sm text-slate-500 mt-2" data-i18n="login_intro">Sign in to your clinic account to manage requests.</p>
         </div>
 
         <form id="loginForm" class="space-y-5">
@@ -37,35 +40,38 @@ $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, 
             <div id="errorMsg" class="hidden bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-100"></div>
 
             <div>
-                <label class="block text-sm font-semibold text-[#13324a] mb-1">Email Address</label>
+                <label class="block text-sm font-semibold text-[#13324a] mb-1" data-i18n="email_address">Email Address</label>
                 <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <div class="user-input-icon absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <i class="fa-regular fa-envelope"></i>
                     </div>
-                    <input type="email" id="email" name="email" required class="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a] placeholder-slate-400" placeholder="clinic@example.com">
+                    <input type="email" id="email" name="email" required class="user-input-with-icon block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a] placeholder-slate-400" placeholder="clinic@example.com" data-i18n-placeholder="email_placeholder" dir="ltr">
                 </div>
             </div>
 
             <div>
-                <label class="block text-sm font-semibold text-[#13324a] mb-1">Password</label>
+                <label class="block text-sm font-semibold text-[#13324a] mb-1" data-i18n="password">Password</label>
                 <div class="relative">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <div class="user-input-icon absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
                         <i class="fa-solid fa-lock"></i>
                     </div>
-                    <input type="password" id="password" name="password" required class="block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a] placeholder-slate-400" placeholder="••••••••">
+                    <input type="password" id="password" name="password" required class="user-input-with-icon block w-full pl-10 pr-3 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#1d5f8c] focus:border-[#1d5f8c] transition text-sm text-[#13324a] placeholder-slate-400" placeholder="••••••••" dir="ltr">
                 </div>
             </div>
 
             <button type="submit" id="submitBtn" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#1d5f8c] hover:bg-[#13324a] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1d5f8c] transition disabled:opacity-70">
-                Sign In
+                <span data-i18n="sign_in">Sign In</span>
             </button>
         </form>
 
         <p class="mt-6 text-center text-sm text-slate-500">
-            Don't have a clinic account? <a href="register.php" class="font-bold text-[#1d5f8c] hover:underline">Register here</a>
+            <span data-i18n="no_account">Don't have a clinic account?</span> <a href="register.php" class="font-bold text-[#1d5f8c] hover:underline" data-i18n="register_here">Register here</a>
         </p>
     </div>
 
+    <script src="js/translations.js"></script>
+    <script src="js/user-page-translations.js"></script>
+    <script src="js/main.js"></script>
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -74,7 +80,7 @@ $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, 
             const errorMsg = document.getElementById('errorMsg');
             
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-2"></i> Signing in...';
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i> ' + i18nText('signing_in', 'Signing in...');
             errorMsg.classList.add('hidden');
 
             try {
@@ -88,15 +94,15 @@ $returnRequestId = filter_var($_GET['request_id'] ?? null, FILTER_VALIDATE_INT, 
                 if (response.ok) {
                     window.location.href = data.redirect;
                 } else {
-                    errorMsg.textContent = data.error || 'An error occurred. Please try again.';
+                    errorMsg.textContent = i18nApiMessage(data.error, 'generic_error');
                     errorMsg.classList.remove('hidden');
                 }
             } catch (err) {
-                errorMsg.textContent = 'Network error. Please check your connection.';
+                errorMsg.textContent = i18nText('network_error', 'Network error. Please check your connection.');
                 errorMsg.classList.remove('hidden');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = 'Sign In';
+                btn.textContent = i18nText('sign_in', 'Sign In');
             }
         });
     </script>

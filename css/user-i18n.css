@@ -1,0 +1,84 @@
+:root {
+    --user-i18n-navy: #13324a;
+    --user-i18n-blue: #1d5f8c;
+    --user-i18n-line: #dbe5ec;
+}
+
+html[lang="ar"] body {
+    font-family: "Cairo", "Outfit", sans-serif;
+}
+
+.user-language-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .25rem;
+    border: 1px solid var(--user-i18n-line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 8px 24px rgba(19, 50, 74, .08);
+}
+
+.user-language-label {
+    padding-inline: .55rem .25rem;
+    color: #64748b;
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.user-language-switcher .lang-btn {
+    min-width: 2.35rem;
+    border: 0;
+    border-radius: 999px;
+    padding: .42rem .65rem;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 800;
+    transition: background-color .18s ease, color .18s ease, box-shadow .18s ease;
+}
+
+.user-language-switcher .lang-btn:hover,
+.user-language-switcher .lang-btn:focus-visible {
+    color: var(--user-i18n-blue);
+    outline: none;
+}
+
+.user-language-switcher .lang-btn.active {
+    background: var(--user-i18n-navy);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(19, 50, 74, .2);
+}
+
+.user-language-switcher-compact .user-language-label {
+    display: none;
+}
+
+html[dir="rtl"] .rtl-flip {
+    transform: scaleX(-1);
+}
+
+html[dir="rtl"] .text-left {
+    text-align: right;
+}
+
+html[dir="rtl"] .text-right {
+    text-align: left;
+}
+
+html[dir="rtl"] .user-input-icon {
+    left: auto;
+    right: 0;
+    padding-left: 0;
+    padding-right: .75rem;
+}
+
+html[dir="rtl"] .user-input-with-icon {
+    padding-left: .75rem;
+    padding-right: 2.5rem;
+}
+
+@media (max-width: 640px) {
+    .user-language-label { display: none; }
+}

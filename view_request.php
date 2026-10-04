@@ -381,6 +381,7 @@ $isChatWritable  = requestChatIsWritable($request);
     <!-- ══ Page Container ══ -->
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
+        <?php if ($isSurgicalGuide): ?>
         <!-- ── Request header ── -->
         <div class="flex flex-wrap items-center gap-4 mb-4">
             <a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-[#13324a] hover:bg-slate-50 transition shadow-sm" aria-label="Back to dashboard">
@@ -398,6 +399,7 @@ $isChatWritable  = requestChatIsWritable($request);
                 <p class="font-extrabold mb-1"><i class="fa-solid fa-circle-exclamation mr-2"></i>Request Rejected</p>
                 <p><?= nl2br(htmlspecialchars($request['rejection_reason'])) ?></p>
             </div>
+        <?php endif; ?>
         <?php endif; ?>
 
         <?php if ($isSurgicalGuide): ?>
@@ -428,63 +430,9 @@ $isChatWritable  = requestChatIsWritable($request);
             <!-- ── Main content column ── -->
             <div class="space-y-5">
 
-                <?php if ($request['service_type'] === 'surgeon_request'): ?>
-                    <?php require __DIR__ . '/includes/surgeon_request_guidance.php'; ?>
-                <?php endif; ?>
                 <?php if ($details): ?>
                     <?php if ($request['service_type'] === 'surgeon_request'): ?>
-                        <!-- Submitted surgeon request details -->
-                        <div class="case-card">
-                            <div class="case-card-header">
-                                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-500"><i class="fa-solid fa-user-doctor"></i></div>
-                                <h2 class="text-lg font-bold text-[#13324a]">Surgeon Request Details</h2>
-                            </div>
-                            <div class="case-card-body">
-                                <?php require __DIR__ . '/includes/surgeon_request_details.php'; ?>
-                                <?php if (!empty($details['surgeon_name'])): ?>
-                                    <div class="mt-6 p-4 rounded-xl bg-teal-50 border border-teal-100 flex items-start gap-4">
-                                        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white shadow-sm text-teal-600 text-lg"><i class="fa-solid fa-user-md"></i></div>
-                                        <div>
-                                            <h3 class="text-sm font-bold text-[#13324a]">Assigned Surgeon</h3>
-                                            <p class="text-sm text-slate-600 mt-1"><span>Dr.</span> <span dir="auto"><?= htmlspecialchars($details['surgeon_name']) ?></span> <span>has been assigned to this case.</span></p>
-                                        </div>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-
-                        <?php require __DIR__ . '/includes/surgeon_operation_panel.php'; ?>
-                        <?php if ($request['status'] === 'pending_payment'): ?>
-                            <div class="case-card">
-                                <div class="case-card-header">
-                                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><i class="fa-solid fa-credit-card"></i></div>
-                                    <h2 class="text-lg font-bold text-[#13324a]">Online payment</h2>
-                                </div>
-                                <div class="case-card-body">
-                                    <?php if ((float) ($details['total_price'] ?? 0) > 0 && surgeonOperationIsReady($details)): ?>
-                                        <p class="text-2xl font-extrabold text-[#13324a]"><?= htmlspecialchars(formatMoney($details['total_price'])) ?></p>
-                                        <p class="mt-2 text-sm text-slate-600">Full payment confirms your agreement to the surgeon, appointment and final price shown above.</p>
-                                        <p class="mt-2 text-sm leading-6 text-slate-600">Select Pay now to open secure online checkout. After paying, return to this request and check the payment record. Your request moves to Paid — awaiting operation after payment confirmation.</p>
-                                        <?php if ($hasPaymentError): ?>
-                                            <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"><?= ($_GET['payment_error'] ?? '')==='operation_changed' ? 'The operation details changed. Review the updated surgeon, appointment and final price before paying.' : 'Payment could not be started. Please try again or contact support.' ?></p>
-                                        <?php endif; ?>
-                                        <?php if (xpayIsConfigured()): ?>
-                                            <form method="post" action="api/create_xpay_checkout.php" class="mt-4">
-                                                <input type="hidden" name="request_id" value="<?= (int) $request['id'] ?>" />
-                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($request_workflow_csrf_token) ?>" />
-                                                <input type="hidden" name="operation_fingerprint" value="<?= htmlspecialchars(surgeonOperationFingerprint($details)) ?>" />
-                                                <button type="submit" class="inline-flex items-center justify-center rounded-xl bg-[#1d5f8c] px-5 py-3 text-sm font-bold text-white shadow-sm transition hover:bg-[#13324a]"><i class="fa-solid fa-lock mr-2"></i>Pay now</button>
-                                            </form>
-                                        <?php else: ?>
-                                            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Online payment is temporarily unavailable.</p>
-                                        <?php endif; ?>
-                                    <?php else: ?>
-                                        <p class="text-sm font-semibold leading-6 text-amber-700">Payment is not ready yet. Administration must confirm the surgeon, appointment and final price. Use the conversation to ask about the missing details.</p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
+                        <?php require __DIR__ . '/includes/surgeon_workspace.php'; ?>
                     <?php else: ?>
                         <!-- ── Surgical Guide: Key info cards ── -->
                         <div class="case-card">
@@ -770,6 +718,7 @@ $isChatWritable  = requestChatIsWritable($request);
                     </div>
                 <?php endif; ?>
 
+                <?php if ($isSurgicalGuide): ?>
                 <!-- ── Payment ── -->
                 <div class="case-card">
                     <div class="case-card-header">
@@ -828,6 +777,7 @@ $isChatWritable  = requestChatIsWritable($request);
                         <?php endif; ?>
                     </div>
                 </div>
+                <?php endif; ?>
 
             </div><!-- end main column -->
 

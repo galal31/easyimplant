@@ -1,5 +1,4 @@
 (() => {
-    const text = (key, fallback) => typeof i18nText === 'function' ? i18nText(key, fallback) : fallback;
     const section = document.getElementById('payment-return');
     const button = document.getElementById('payment-check');
     if (!section || !button) return;
@@ -27,7 +26,7 @@
         clearTimeout(timer);
         if (terminal) return;
         if (Date.now() >= deadline) {
-            note.textContent = text('payment_check_slow', 'Confirmation is taking longer than expected. Use Check again, or return to your request.');
+            note.textContent = 'Confirmation is taking longer than expected. Use Check again, or return to your request.';
             return;
         }
         timer = setTimeout(() => check(false), 4000);
@@ -39,7 +38,7 @@
         if (manual) deadline = Date.now() + 120000;
         running = true;
         button.disabled = true;
-        note.textContent = text('checking_payment', 'Checking payment status…');
+        note.textContent = 'Checking payment status…';
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000);
         try {
@@ -47,9 +46,9 @@
             if (!response.ok) throw new Error('Status unavailable');
             const status = await response.json();
             render(status);
-            note.textContent = terminal ? text('status_updated', 'Status updated.') : text('checking_automatically', 'Checking automatically every few seconds.');
+            note.textContent = terminal ? 'Status updated.' : 'Checking automatically every few seconds.';
         } catch {
-            note.textContent = text('error_check_payment', 'Could not check the status. Please check your connection and try again.');
+            note.textContent = 'Could not check the status. Please check your connection and try again.';
         } finally {
             clearTimeout(timeout);
             running = false;

@@ -16,6 +16,8 @@
  *   #requestMessagesEmpty, #refreshMessagesButton,
  *   #requestMessageForm, #requestMessageText, #sendMessageButton
  */
+$surgeonClinicChat = ($request['service_type'] ?? '') === 'surgeon_request' && ($_SESSION['role'] ?? '') === 'clinic';
+$surgeonClosedChat = $surgeonClinicChat && in_array($request['status'], ['completed','rejected','cancelled'], true);
 ?>
 <section
     id="requestChatPanel"
@@ -32,7 +34,7 @@
                 <h2 id="chatPanelTitle" class="text-sm font-bold text-[#13324a] leading-tight truncate">
                     <?= isset($_SESSION['role']) && $_SESSION['role'] === 'admin' ? 'Request conversation' : 'Conversation with Easy Implant' ?>
                 </h2>
-                <p class="text-[11px] text-slate-400 leading-tight mt-0.5">Manual refresh only — no auto-update</p>
+                <p class="text-[11px] text-slate-400 leading-tight mt-0.5"><?= $surgeonClinicChat ? 'Select Refresh to check for new replies' : 'Manual refresh only — no auto-update' ?></p>
             </div>
         </div>
         <button
@@ -43,6 +45,8 @@
             <i class="fa-solid fa-rotate mr-1.5"></i>Refresh
         </button>
     </div>
+
+    <?php if ($surgeonClinicChat): ?><p class="shrink-0 border-b border-slate-100 px-4 py-3 text-xs leading-5 text-slate-600"><?= $isChatWritable ? 'Message Easy Implant administration about the case, appointment, price or requested changes. This conversation is for this request; replies appear when you select Refresh.' : ($surgeonClosedChat ? 'This is the saved conversation with Easy Implant administration for this request. You can read previous messages; new messages are disabled because the request is closed.' : 'This historical conversation is read-only. Contact Easy Implant support to confirm the next step for this request.') ?></p><?php endif; ?>
 
     <!-- Status bar -->
     <div id="requestChatStatus" class="hidden shrink-0 mx-3 mt-2 rounded-xl border p-2.5 text-sm font-semibold" role="status" aria-live="polite"></div>
@@ -98,7 +102,7 @@
         <?php else: ?>
             <div class="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
                 <i class="fa-solid fa-lock mr-2 text-slate-400"></i>
-                This conversation is read-only because the request is completed, rejected or cancelled.
+                <?= $surgeonClinicChat && !$surgeonClosedChat ? 'This conversation is read-only because the request uses a previous status.' : 'This conversation is read-only because the request is completed, rejected or cancelled.' ?>
             </div>
         <?php endif; ?>
     </div>

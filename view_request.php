@@ -118,7 +118,7 @@ try {
 function getStatusBadge($status, $serviceType = null) {
     if ($status === 'cancelled') return '<span class="rounded-full bg-red-50 px-3 py-1 text-sm font-semibold text-red-700">Cancelled — financial review</span>';
     if ($serviceType === 'surgeon_request') {
-        $label = ['pending_review'=>'Review & coordination','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed'][$status] ?? null;
+        $label = ['pending_review'=>'Review & coordination','pending_payment'=>'Awaiting your payment','in_progress'=>'Paid — awaiting operation','completed'=>'Operation performed','contacted'=>'Previous coordination status'][$status] ?? null;
         if ($label) return '<span class="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">'.$label.'</span>';
     }
     $badges = [
@@ -377,7 +377,7 @@ $isChatWritable  = requestChatIsWritable($request);
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
         <!-- ── Request header ── -->
-        <div class="flex items-center gap-4 mb-4">
+        <div class="flex flex-wrap items-center gap-4 mb-4">
             <a href="clinic_dashboard.php" class="flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-500 hover:text-[#13324a] hover:bg-slate-50 transition shadow-sm" aria-label="Back to dashboard">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
@@ -385,7 +385,7 @@ $isChatWritable  = requestChatIsWritable($request);
                 <h1 class="text-2xl font-bold text-[#13324a]">Request #<?= str_pad($request['id'], 5, '0', STR_PAD_LEFT) ?></h1>
                 <p class="text-sm text-slate-500 mt-0.5">Submitted on <?= date('F j, Y', strtotime($request['created_at'])) ?> · <?= $isSurgicalGuide ? 'Surgical Guide' : 'Surgeon Request' ?></p>
             </div>
-            <div class="shrink-0"><?= getStatusBadge($request['status'], $request['service_type']) ?></div>
+            <div class="shrink-0 <?= $request['service_type'] === 'surgeon_request' ? 'flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end' : '' ?>"><?php if ($request['service_type'] === 'surgeon_request'): ?><p class="text-xs font-bold text-slate-500">Request status:</p><?php endif; ?><?= getStatusBadge($request['status'], $request['service_type']) ?></div>
         </div>
 
         <?php if ($request['status'] === 'rejected' && !empty($request['rejection_reason'])): ?>
@@ -423,9 +423,12 @@ $isChatWritable  = requestChatIsWritable($request);
             <!-- ── Main content column ── -->
             <div class="space-y-5">
 
+                <?php if ($request['service_type'] === 'surgeon_request'): ?>
+                    <?php require __DIR__ . '/includes/surgeon_request_guidance.php'; ?>
+                <?php endif; ?>
                 <?php if ($details): ?>
                     <?php if ($request['service_type'] === 'surgeon_request'): ?>
-                        <!-- Surgeon request details (unchanged) -->
+                        <!-- Submitted surgeon request details -->
                         <div class="case-card">
                             <div class="case-card-header">
                                 <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-50 text-teal-500"><i class="fa-solid fa-user-doctor"></i></div>
@@ -456,6 +459,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                     <?php if ((float) ($details['total_price'] ?? 0) > 0 && surgeonOperationIsReady($details)): ?>
                                         <p class="text-2xl font-extrabold text-[#13324a]"><?= htmlspecialchars(formatMoney($details['total_price'])) ?></p>
                                         <p class="mt-2 text-sm text-slate-600">Full payment confirms your agreement to the surgeon, appointment and final price shown above.</p>
+                                        <p class="mt-2 text-sm leading-6 text-slate-600">Select Pay now to open secure online checkout. After paying, return to this request and check the payment record. Your request moves to Paid — awaiting operation after payment confirmation.</p>
                                         <?php if ($hasPaymentError): ?>
                                             <p class="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"><?= ($_GET['payment_error'] ?? '')==='operation_changed' ? 'The operation details changed. Review the updated surgeon, appointment and final price before paying.' : 'Payment could not be started. Please try again or contact support.' ?></p>
                                         <?php endif; ?>
@@ -470,7 +474,7 @@ $isChatWritable  = requestChatIsWritable($request);
                                             <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Online payment is temporarily unavailable.</p>
                                         <?php endif; ?>
                                     <?php else: ?>
-                                        <p class="text-sm font-semibold text-amber-700">The final price is still being prepared. Payment will become available after approval.</p>
+                                        <p class="text-sm font-semibold leading-6 text-amber-700">Payment is not ready yet. Administration must confirm the surgeon, appointment and final price. Use the conversation to ask about the missing details.</p>
                                     <?php endif; ?>
                                 </div>
                             </div>
@@ -765,13 +769,13 @@ $isChatWritable  = requestChatIsWritable($request);
                 <div class="case-card">
                     <div class="case-card-header">
                         <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-400"><i class="fa-solid fa-receipt"></i></div>
-                        <h2 class="text-base font-bold text-[#13324a]">Payment</h2>
+                        <div><h2 class="text-base font-bold text-[#13324a]"><?= $request['service_type'] === 'surgeon_request' ? 'Payment record' : 'Payment' ?></h2><?php if ($request['service_type'] === 'surgeon_request'): ?><p class="mt-1 text-xs leading-5 text-slate-500">Check whether a payment has been recorded for this request. Payment confirmation and operation completion are separate steps.</p><?php endif; ?></div>
                     </div>
                     <div class="case-card-body">
                         <?php if ($payment): ?>
                             <div class="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
                                 <div>
-                                    <p class="info-label">Status</p>
+                                    <p class="info-label"><?= $request['service_type'] === 'surgeon_request' ? 'Payment status' : 'Status' ?></p>
                                     <p class="text-sm font-bold <?= $payment['status'] === 'approved' ? 'text-emerald-600' : ($payment['status'] === 'rejected' ? 'text-red-600' : 'text-orange-600') ?>">
                                         <?= ucfirst(str_replace('_', ' ', $payment['status'])) ?>
                                     </p>
@@ -808,7 +812,13 @@ $isChatWritable  = requestChatIsWritable($request);
                             <div class="text-center py-6 text-slate-500">
                                 <div class="inline-flex h-12 w-12 items-center justify-center rounded-full bg-slate-50 text-slate-400 mb-3"><i class="fa-solid fa-file-invoice text-xl"></i></div>
                                 <p class="text-sm font-semibold text-[#13324a]">No confirmed payment yet.</p>
-                                <p class="mt-1 text-xs leading-5 text-slate-500">A completed online payment will appear here.</p>
+                                <p class="mt-1 text-xs leading-5 text-slate-500"><?php if ($request['service_type'] === 'surgeon_request'): ?>
+                                    <?php if ($request['status'] === 'pending_review'): ?>No payment is required at the review stage. After the surgeon, appointment and final price are confirmed, an Online payment section will become available.
+                                    <?php elseif ($request['status'] === 'pending_payment'): ?>Use the Online payment section above when the confirmed details are ready. Your payment record will appear here after confirmation.
+                                    <?php elseif ($request['status'] === 'in_progress'): ?>No confirmed payment is recorded here. If you have already paid, contact Easy Implant to check the payment status before paying again.
+                                    <?php else: ?>No confirmed payment is recorded for this request. Contact Easy Implant support if you need clarification about the payment records.
+                                    <?php endif; ?>
+                                <?php else: ?>A completed online payment will appear here.<?php endif; ?></p>
                             </div>
                         <?php endif; ?>
                     </div>

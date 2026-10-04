@@ -2,16 +2,28 @@
 if (!isset($details) || !is_array($details)) return;
 $surgeonArches = $surgeonArches ?? [];
 $surgeonFiles = $surgeonFiles ?? [];
-$providerLabels = ['clinic' => 'Provided by clinic — not charged', 'easy_implant' => 'Provided by Easy Implant'];
+$surgeonClinicView = ($_SESSION['role'] ?? '') === 'clinic';
+$providerLabels = $surgeonClinicView
+    ? ['clinic' => 'Clinic — you provide the implants; their cost is excluded from this total', 'easy_implant' => 'Easy Implant — we provide the implants; their cost is included in this total']
+    : ['clinic' => 'Provided by clinic — not charged', 'easy_implant' => 'Provided by Easy Implant'];
+$surgeonFieldHelp = [
+    'patient_name' => 'The patient this surgical request is for.',
+    'patient_age' => 'The patient age in years, as entered when you submitted the request.',
+    'service_name_snapshot' => 'The surgical service you requested for this case.',
+    'proposed_date' => 'Your preferred date when submitting the request. Check Operation coordination below for the appointment confirmed by administration.',
+    'medical_history' => 'The medical information you submitted for administration to review this case.',
+    'notes' => 'The extra instructions or information you included with your request.',
+];
 $allOnPackages = getSurgeonAllOnPackages();
 $fileGroups = ['cbct' => [], 'lab' => []];
 foreach ($surgeonFiles as $file) {
     if (isset($fileGroups[$file['file_category']])) $fileGroups[$file['file_category']][] = $file;
 }
 ?>
+<?php if ($surgeonClinicView): ?><p class="mb-5 text-sm leading-6 text-slate-600">These are the case details you submitted. Review them and use the conversation with Easy Implant to request any changes or clarify the treatment before payment.</p><?php endif; ?>
 <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
     <?php foreach (['patient_name' => 'Patient Name', 'patient_age' => 'Patient Age', 'service_name_snapshot' => 'Surgical Service', 'proposed_date' => 'Proposed Operation Date'] as $key => $label): ?>
-        <?php if (isset($details[$key]) && $details[$key] !== ''): ?><div><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700"><?= htmlspecialchars((string) $details[$key]) ?></div></div><?php endif; ?>
+        <?php if (isset($details[$key]) && $details[$key] !== ''): ?><div><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm text-slate-700"><?= htmlspecialchars((string) $details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
     <?php endforeach; ?>
 
     <?php if (($details['service_kind'] ?? null) === 'dental_implant' && ($details['implant_package'] ?? null) !== 'all_on_arches'): ?>
@@ -41,24 +53,31 @@ foreach ($surgeonFiles as $file) {
 
     <?php if (empty($details['requires_quote'])): ?>
         <div class="md:col-span-2 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <?php if ($surgeonClinicView): ?><div class="border-b border-slate-100 px-4 py-3"><h3 class="text-sm font-bold text-[#13324a]">Price breakdown</h3><p class="mt-1 text-xs leading-5 text-slate-500">Professional fees are for your selected treatment. Implant costs are added only for implants supplied by Easy Implant. Travel covers the visit to your clinic governorate and is charged once for the request.</p></div><?php endif; ?>
             <div class="grid grid-cols-2 gap-3 p-4 text-sm sm:grid-cols-4">
                 <div><p class="text-xs text-slate-500"><?= ($details['implant_package'] ?? '') === 'all_on_arches' ? 'Team work' : 'Surgeon work' ?></p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ((($details['implant_package'] ?? '') === 'all_on_arches') ? ($details['team_fee_total'] ?? 0) : ($details['doctor_fee_total'] ?? 0)), 2) ?> EGP</p></div>
                 <div><p class="text-xs text-slate-500">Implants supplied by us</p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ($details['implant_cost_total'] ?? 0), 2) ?> EGP</p></div>
                 <div><p class="text-xs text-slate-500">Travel</p><p class="mt-1 font-bold text-[#13324a]"><?= number_format((float) ($details['travel_price'] ?? 0), 2) ?> EGP</p></div>
                 <div class="rounded-lg bg-[#13324a] px-3 py-2 text-white"><p class="text-xs text-slate-300"><?= !empty($details['price_confirmed_at']) ? 'Final total' : 'Estimated total' ?></p><p class="mt-1 text-base font-extrabold"><?= number_format((float) ($details['total_price'] ?? $details['estimated_total'] ?? 0), 2) ?> EGP</p></div>
             </div>
+            <?php if ($surgeonClinicView): ?><p class="border-t border-slate-100 px-4 py-3 text-xs leading-5 text-slate-500"><?= !empty($details['price_confirmed_at']) ? 'Administration has approved this final total. Payment is available at the payment stage after the surgeon and appointment are confirmed.' : 'This is the calculated estimate saved with your request. Administration must confirm the surgeon, appointment and final price before asking you to pay.' ?></p><?php endif; ?>
         </div>
     <?php elseif (!empty($details['requires_quote']) && (float) ($details['total_price'] ?? 0) > 0): ?>
         <div class="md:col-span-2 rounded-xl bg-[#13324a] p-5 text-white"><p class="text-xs font-bold uppercase tracking-wider text-blue-100">Final total</p><p class="mt-1 text-2xl font-extrabold"><?= number_format((float) $details['total_price'], 2) ?> EGP</p></div>
     <?php endif; ?>
 
+    <?php if ($surgeonClinicView && !empty($details['requires_quote'])): ?><p class="md:col-span-2 text-sm leading-6 text-slate-600"><?= (float) ($details['total_price'] ?? 0) > 0 ? 'This service uses an individual quotation. Review the quoted total with Easy Implant and ask what it covers before paying.' : 'This service has no automatic price. Administration reviews the case and provides an individual quotation; no payment is required while the quote is being prepared.' ?></p><?php endif; ?>
+
+    <?php if ($surgeonClinicView && ($details['service_kind'] ?? '') === 'dental_implant'): ?><p class="md:col-span-2 text-xs leading-5 text-slate-500"><?= ($details['implant_package'] ?? '') === 'all_on_arches' ? 'Each arch has its own treatment package, implant type and supplier. The arch subtotal combines team fees and any implants we supply for that arch; travel is added once to the whole request.' : 'The package, implant type and number of implants describe the treatment you selected. The implant provider identifies who supplies the implants, separately from the surgeon professional fees.' ?></p><?php endif; ?>
+
     <?php foreach (['medical_history' => 'Medical History & Considerations', 'notes' => 'Additional Notes'] as $key => $label): ?>
-        <?php if (!empty($details[$key])): ?><div class="md:col-span-2"><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700"><?= htmlspecialchars($details[$key]) ?></div></div><?php endif; ?>
+        <?php if (!empty($details[$key])): ?><div class="md:col-span-2"><h3 class="mb-2 text-xs font-bold uppercase tracking-wider text-slate-400"><?= $label ?></h3><div class="whitespace-pre-wrap rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-700"><?= htmlspecialchars($details[$key]) ?></div><?php if ($surgeonClinicView): ?><p class="mt-2 text-xs leading-5 text-slate-500"><?= htmlspecialchars($surgeonFieldHelp[$key]) ?></p><?php endif; ?></div><?php endif; ?>
     <?php endforeach; ?>
 
     <?php if ($surgeonFiles): ?>
         <div class="md:col-span-2 border-t border-slate-100 pt-6">
             <h3 class="mb-4 text-base font-bold text-[#13324a]">Clinical Files</h3>
+            <?php if ($surgeonClinicView): ?><p class="mb-4 text-sm leading-6 text-slate-600">The CBCT scans and lab results attached to this request help administration review the case. Select a file to open or download it.</p><?php endif; ?>
             <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <?php foreach (['cbct' => ['CBCT Files', 'fa-x-ray'], 'lab' => ['Lab Results', 'fa-flask-vial']] as $category => $meta): ?>
                     <?php if ($fileGroups[$category]): ?><div class="rounded-xl border border-slate-200 bg-slate-50 p-4"><h4 class="mb-3 text-sm font-bold text-[#13324a]"><i class="fa-solid <?= $meta[1] ?> mr-2 text-[#1d5f8c]"></i><?= $meta[0] ?></h4><div class="space-y-2">
@@ -67,5 +86,7 @@ foreach ($surgeonFiles as $file) {
                 <?php endforeach; ?>
             </div>
         </div>
+    <?php elseif ($surgeonClinicView): ?>
+        <div class="md:col-span-2 border-t border-slate-100 pt-5"><h3 class="text-sm font-bold text-[#13324a]">Clinical Files</h3><p class="mt-2 text-sm leading-6 text-slate-500">No clinical files were attached to this request. Files are optional at submission; use the conversation to coordinate if administration needs more information.</p></div>
     <?php endif; ?>
 </div>

@@ -8,7 +8,7 @@ require_once __DIR__.'/../includes/xpay.php';
 if (APP_ENVIRONMENT!=='local') throw new RuntimeException('Local tests only.');
 $base='http://localhost/easyimplant/';
 $tag=bin2hex(random_bytes(6)); $password=bin2hex(random_bytes(18));
-$users=$requests=$surgeons=$events=$cookies=[];
+$users=$requests=$surgeons=$events=$cookies=$services=[];
 $checks=0;
 function checkOperation(bool $ok,string $message): void { global $checks; if(!$ok) throw new RuntimeException($message); $checks++; }
 function operationHttp(string $path,?array $data=null,?string $cookie=null,bool $json=false): array {
@@ -55,6 +55,21 @@ try {
         [$code,,$login]=operationHttp('api/login.php',['email'=>$email,'password'=>$password],$cookie); checkOperation($code===200 && isset($login['redirect']),'Test login failed');
     }
     [$admin,$clinic,$other]=$users; [$adminCookie,$clinicCookie,$otherCookie]=$cookies;
+    // Check the rendered date limit and reject direct POSTs bypassing the browser.
+    $today=new DateTimeImmutable('today',new DateTimeZone('Africa/Cairo'));
+    [$code,$html]=operationHttp('request_surgeon.php',null,$clinicCookie);
+    checkOperation($code===200 && str_contains($html,'min="'.$today->modify('+3 days')->format('Y-m-d').'"'),'Incorrect proposed-date minimum');
+    preg_match('/id="csrfToken" value="([a-f0-9]+)"/',$html,$dateMatch);
+    $pdo->prepare('INSERT INTO surgeon_services (name,is_active) VALUES (?,1)')->execute(['Date Test '.$tag]);
+    $service=(int)$pdo->lastInsertId(); $services[]=$service;
+    $submission=['csrf_token'=>$dateMatch[1] ?? '', 'patient_name'=>'Date Test','patient_age'=>35,'medical_history'=>'Test only','surgical_service'=>'custom:'.$service];
+    foreach([-1,0,1,2] as $days) {
+        [$code,,$response]=operationHttp('api/submit_surgeon.php',$submission+['proposed_date'=>$today->modify($days.' days')->format('Y-m-d')],$clinicCookie);
+        checkOperation($code===400 && str_contains($response['error'] ?? '', '3 calendar days'),'Too-early proposed date accepted: '.$days);
+    }
+    [$code,,$response]=operationHttp('api/submit_surgeon.php',$submission+['proposed_date'=>$today->modify('+3 days')->format('Y-m-d')],$clinicCookie);
+    if(!empty($response['request_id'])) $requests[]=(int)$response['request_id'];
+    checkOperation($code===201 && !empty($response['request_id']),'First allowed proposed date rejected');
     [$code,$html]=operationHttp('admin/admin_surgeons.php',null,$adminCookie); checkOperation($code===200,'Surgeon CRUD page failed: HTTP '.$code.'; cookie bytes '.filesize($adminCookie));
     preg_match('/name="csrf_token" value="([a-f0-9]+)"/',$html,$match); $crudToken=$match[1] ?? ''; checkOperation($crudToken!=='','CRUD token missing');
     $name='Operation Surgeon '.$tag;
@@ -145,6 +160,7 @@ try {
     foreach($events as $event) $pdo->prepare('DELETE FROM xpay_webhook_events WHERE event_id=?')->execute([$event]);
     foreach($requests as $id) { $pdo->prepare('DELETE FROM surgeon_assignment_history WHERE request_id=?')->execute([$id]); $pdo->prepare('DELETE FROM requests WHERE id=?')->execute([$id]); }
     foreach($surgeons as $id) $pdo->prepare('DELETE FROM surgeons WHERE id=?')->execute([$id]);
+    foreach($services as $id) $pdo->prepare('DELETE FROM surgeon_services WHERE id=?')->execute([$id]);
     foreach($users as $id) $pdo->prepare('DELETE FROM users WHERE id=?')->execute([$id]);
     foreach($cookies as $cookie) if(is_file($cookie)) unlink($cookie);
 }

@@ -19,6 +19,7 @@ $customServices = [];
 $regularPackages = getSurgeonImplantPackages();
 $allOnPackages = getSurgeonAllOnPackages();
 $allOnPrices = [];
+$minimumProposedDate = (new DateTimeImmutable('today', new DateTimeZone('Africa/Cairo')))->modify('+3 days')->format('Y-m-d');
 
 if (empty($_SESSION['surgeon_request_csrf_token'])) {
     $_SESSION['surgeon_request_csrf_token'] = bin2hex(random_bytes(32));
@@ -145,7 +146,7 @@ foreach ($regularPackages as $code => $package) {
                 <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Patient Name</label><input type="text" name="patient_name" maxlength="100" required class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></div>
                 <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Patient Age</label><input type="number" name="patient_age" required min="1" max="120" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></div>
                 <div class="md:col-span-2"><label class="mb-2 block text-sm font-semibold text-[#13324a]">Medical History & Considerations</label><textarea name="medical_history" required rows="3" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
-                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Proposed Operation Date</label><input type="date" name="proposed_date" required min="<?= date('Y-m-d') ?>" class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a]"></div>
+                <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Proposed Operation Date</label><input type="date" name="proposed_date" required min="<?= $minimumProposedDate ?>" class="block w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-[#13324a]"><p class="mt-2 text-xs text-slate-500">Choose a date at least 3 calendar days from today (Cairo time).</p></div>
                 <div><label class="mb-2 block text-sm font-semibold text-[#13324a]">Additional Notes</label><textarea name="notes" rows="3" class="block w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-[#13324a]"></textarea></div>
             </div>
         </section>

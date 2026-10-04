@@ -67,9 +67,11 @@ if ($patientName === '' || mb_strlen($patientName) > 100 || $patientAge === fals
 if ($patientAge < 1 || $patientAge > 120) {
     surgeonRequestResponseError('Please enter a valid patient age.', 400);
 }
-$date = DateTimeImmutable::createFromFormat('!Y-m-d', $proposedDate);
-if (!$date || $date->format('Y-m-d') !== $proposedDate || $proposedDate < date('Y-m-d')) {
-    surgeonRequestResponseError('Please choose a valid proposed date that is not in the past.', 400);
+$cairoZone = new DateTimeZone('Africa/Cairo');
+$minimumProposedDate = (new DateTimeImmutable('today', $cairoZone))->modify('+3 days')->format('Y-m-d');
+$date = DateTimeImmutable::createFromFormat('!Y-m-d', $proposedDate, $cairoZone);
+if (!$date || $date->format('Y-m-d') !== $proposedDate || $proposedDate < $minimumProposedDate) {
+    surgeonRequestResponseError('Please choose a valid proposed date at least 3 calendar days from today (Cairo time).', 400);
 }
 if (!is_array($submittedFiles) || count($submittedFiles) > 40) {
     surgeonRequestResponseError('Invalid uploaded file list.', 400);
